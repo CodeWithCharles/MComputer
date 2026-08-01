@@ -1,82 +1,117 @@
-# Projet : Mod Minecraft inspiré d'OpenComputers
+# Project: OpenComputers-inspired Minecraft mod
 
-## Contexte
+## Context
 
-Envie de coder un mod Minecraft pour passer le temps / apprendre, inspiré du mod culte **OpenComputers**. Après exploration des repos existants (OpenComputers original, forks OC2R, portages 1.20.1), constat que tous les projets de portage repérés sont inactifs. Décision : **repartir de zéro** en s'inspirant du concept plutôt que de porter/forker le code existant (Scala, architecture datée).
+A Minecraft mod written for fun and learning, inspired by the cult mod
+**OpenComputers**. After surveying the existing repositories (the original
+OpenComputers, the OC2R fork, various 1.20.1 ports), every porting effort found
+was inactive. Decision: **start from scratch**, borrowing the concept rather
+than porting or forking the existing code (Scala, dated architecture).
 
-## Décision clé : repartir de zéro
+## Key decision: start from scratch
 
-**Avantages retenus :**
-- Code en Java, stack moderne, 100% maîtrisée
-- Choix d'architecture propres dès le départ
-- Scope contrôlable (pas obligé de tout réimplémenter)
-- Plus motivant sur la durée qu'un débogage de code tiers
+**Upside:**
 
-**Ce qu'on garde du concept original (MIT, inspiration libre, pas de copie de code) :**
-- Un bloc "Computer" modulaire avec des composants qu'on insère/retire pour activer des fonctionnalités
-- L'idée centrale : le computer boot une sorte de "mini OS" scriptable en Lua
+- Java, modern stack, fully under control
+- Clean architectural choices from day one
+- Controllable scope — no obligation to reimplement everything
+- More motivating long-term than debugging third-party code
 
-**Ce qu'on jette :**
-- Robots / drones autonomes et tout ce qui touche au mouvement/pathfinding physique
-- Réseau de câbles/composants distribués dans le monde (tout reste dans le bloc)
-- Écrans 3D, hologrammes, imprimante 3D, intégrations avec d'autres mods — tout ça, plus tard si le projet vit
+**What we keep from the original concept** (MIT-licensed, free inspiration, no
+code copied):
 
-## Scope du MVP
+- A modular "computer" block with components you insert and remove to unlock
+  features
+- The core idea: the computer boots a small Lua-scriptable OS
 
-### Le bloc Computer
-- Bloc placé dans le monde avec un inventaire interne pour les composants
-- État on/off, gère la séquence de boot
+**What we drop:**
 
-### Composants modulaires (cartes insérées dans le computer)
-- CPU (vitesse d'exécution / tier)
-- RAM (limite mémoire du script Lua)
-- Disque dur / disquette (stockage persistant, filesystem simple)
-- Carte graphique + écran (bloc lié, affichage texte/pixels)
-- Carte réseau → pas MVP, plus tard
+- Autonomous robots and drones, and anything involving movement or pathfinding
+- Cable networks and components distributed across the world — everything stays
+  inside the block
+- 3D screens, holograms, 3D printers, cross-mod integrations — all deferred
+  until the project proves itself
 
-### Le "mini Linux"
-- VM Lua sandboxée côté serveur (probablement LuaJ en Java pour le MVP, plus simple à intégrer qu'un binding natif type Eris)
-- OS minimal scripté en Lua (façon OpenOS) : shell basique, filesystem virtuel, commandes de base (`ls`, `edit`, `run`)
-- Persistance : état repris là où il s'est arrêté au rechargement du chunk
+## MVP scope
 
-### Étapes de développement suggérées
-1. Bloc Computer qui boot (on/off, écran de boot statique, pas de composants)
-2. VM Lua intégrée — exécuter un script hardcodé, output dans les logs serveur
-3. Écran + terminal basique — rendu texte in-game, le script Lua peut écrire dessus
-4. Composants modulaires réels — inventaire du computer, CPU/RAM qui influencent la VM
-5. Système de fichiers persistant — sauvegarde/chargement, shell minimal en Lua
+### The computer block
 
-*Arriver à l'étape 3 donne déjà un résultat jouable et satisfaisant.*
+- A placed block with an internal inventory for components
+- On/off state, drives the boot sequence
 
-## Persistance du filesystem
+### Modular components (cards inserted into the computer)
 
-**Comment fait l'original (référence) :** OpenComputers utilise un système "SaveHandler" qui stocke l'état de la machine dans des **fichiers externes** (pas directement dans le NBT du bloc) pour éviter les limitations de taille du NBT, organisés hiérarchiquement par dimension/chunk.
+- CPU (execution speed / tier)
+- RAM (memory ceiling for the Lua script)
+- Hard drive / floppy (persistent storage, simple filesystem)
+- Graphics card + screen (linked block, text and pixel output)
+- Network card — out of MVP scope, later
 
-**Approche retenue pour le MVP :**
-- Le NBT du bloc/tile entity garde seulement des métadonnées légères (UUID du "disque", état on/off, composants insérés)
-- Le contenu réel du filesystem (fichiers, scripts Lua) est stocké à part, dans un fichier séparé du dossier de sauvegarde du monde (ex: `world/data/tonmod/disks/<uuid>.dat`)
-- Chargement lazy : le fichier n'est lu que quand la VM a besoin d'accéder au FS, pas à chaque tick
-- Pas besoin d'un vrai filesystem avec blocs/inodes pour le MVP — un simple dictionnaire chemin → contenu suffit
+### The "mini Linux"
 
-## Stack technique retenue
+- Sandboxed Lua VM running server-side (likely LuaJ on the JVM for the MVP —
+  easier to integrate than a native binding such as Eris)
+- A minimal Lua-scripted OS (OpenOS-style): basic shell, virtual filesystem,
+  core commands (`ls`, `edit`, `run`)
+- Persistence: state resumes where it stopped when the chunk reloads
 
-| Élément | Choix |
+### Suggested development milestones
+
+1. A computer block that boots (on/off, static boot screen, no components)
+2. Embedded Lua VM — run a hardcoded script, output to the server log
+3. Screen and basic terminal — in-game text rendering, writable from Lua
+4. Real modular components — computer inventory, CPU/RAM affecting the VM
+5. Persistent filesystem — save/load, minimal Lua shell
+
+*Reaching milestone 3 already yields something playable and satisfying.*
+
+## Filesystem persistence
+
+**How the original does it (for reference):** OpenComputers uses a "SaveHandler"
+that stores machine state in **external files** rather than directly in the
+block's NBT, avoiding NBT size limits, organised hierarchically by dimension and
+chunk.
+
+**Approach chosen for the MVP:**
+
+- The block entity's NBT holds only lightweight metadata (disk UUID, on/off
+  state, inserted components)
+- The actual filesystem contents (files, Lua scripts) live separately, in a file
+  under the world save directory, e.g. `world/data/mcomputer/disks/<uuid>.dat`
+- Lazy loading: the file is read only when the VM needs filesystem access, not
+  every tick
+- No need for a real block/inode filesystem in the MVP — a simple
+  path-to-content map is enough
+
+## Technical stack
+
+| Item | Choice |
 |---|---|
-| Version Minecraft | 26.x (nouvelle numérotation Mojang, ex-1.21.x) |
-| Loader | Fabric (Loader + API) — plus léger que NeoForge, meilleur pour itérer vite en solo |
-| Build system | Gradle + Fabric Loom (setup standard) |
-| Multi-version | StoneCutter (permet de cibler plusieurs versions MC dans une seule codebase, pensé pour les projets Loom/Fabric en Java) |
-| Java | JDK 25 (recommandé par Fabric pour la branche 26.1+) |
-| Multi-loader (Architectury) | **Non retenu** pour l'instant — complexité inutile pour un MVP solo. À reconsidérer plus tard si besoin de NeoForge en plus |
+| Minecraft version | 26.2 (Mojang's new numbering, formerly the 1.21.x line) |
+| Loader | Fabric (Loader + API) — lighter than NeoForge, better for solo iteration |
+| Build system | Gradle 9.5.1 + Fabric Loom 1.17 |
+| Loom plugin | `net.fabricmc.fabric-loom` — since 26.1 Minecraft ships unobfuscated, so **no remapping**. The older `fabric-loom-remap` plugin only applies to 1.21.11 and below. |
+| Multi-version | Stonecutter 0.9.7, starting with a single target (26.2) so the plumbing exists without the upfront cost |
+| Java | JDK 25 (required by Fabric from 26.1 onwards) |
+| Fabric Loader | 0.19.3 |
+| Fabric API | 0.152.2+26.2 |
+| IDE | IntelliJ IDEA 2025.3+ (required for mixin annotation processing) |
+| Multi-loader (Architectury) | **Rejected** for now — unnecessary complexity for a solo MVP. Revisit if NeoForge support becomes desirable. |
 
-## Pistes explorées et écartées
+## Explored and rejected
 
-- **MightyPirates/OpenComputers** (original) — Scala, pas de plan de portage officiel vers versions récentes
-- **North-Western-Development/oc2r** — fork actif d'OpenComputers II (VM RISC-V/Linux, pas le concept Lua sandboxé original) — écarté car ce n'est pas la même approche que l'OC classique
-- **SirDavidLudwig/OpenComputers-Reimagined** — tentative de réécriture Architectury du mod original — inactif
-- **TheRealM18 / North-Western-Development — OpenComputers-1.20.1-port** — portage direct de l'original vers 1.20.1 — inactif
+- **MightyPirates/OpenComputers** (original) — Scala, no official plan to port to
+  recent versions
+- **North-Western-Development/oc2r** — active fork of OpenComputers II
+  (RISC-V/Linux VM, not the sandboxed-Lua concept) — rejected as a different
+  approach from classic OC
+- **SirDavidLudwig/OpenComputers-Reimagined** — Architectury rewrite attempt —
+  inactive
+- **TheRealM18 / North-Western-Development — OpenComputers-1.20.1-port** —
+  direct port of the original — inactive
 
-## Prochaines étapes possibles
-- Setup du squelette de projet (structure Gradle, `fabric.mod.json`, config StoneCutter)
-- Premier bloc Computer basique (étape 1 du plan)
-- Design plus détaillé de la VM Lua et de l'intégration LuaJ
+## Next steps
+
+- Project skeleton (Stonecutter + Loom, `fabric.mod.json`)
+- First basic computer block (milestone 1)
+- Detailed design of the Lua VM and the LuaJ integration
