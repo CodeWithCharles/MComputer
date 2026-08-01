@@ -27,3 +27,7 @@ bin/
 # OS
 .DS_Store
 Thumbs.db
+
+# AI Slop things
+.ai/
+.claude/

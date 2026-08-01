@@ -1,0 +1,11 @@
+{
+  "required": true,
+  "package": "io.github.codewithcharles.mcomputer.mixin",
+  "compatibilityLevel": "${java}",
+  "mixins": [
+    "MinecraftServerMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

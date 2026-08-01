@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "id": "${id}",
+  "version": "${version}",
+  "name": "${name}",
+  "description": "A modular computer block that boots a minimal, Lua-scriptable OS.",
+  "authors": [
+    "CodeWithCharles"
+  ],
+  "contact": {
+    "homepage": "https://github.com/CodeWithCharles/MComputer",
+    "sources": "https://github.com/CodeWithCharles/MComputer",
+    "issues": "https://github.com/CodeWithCharles/MComputer/issues"
+  },
+  "license": "MIT",
+  "icon": "assets/mcomputer/icon.png",
+  "environment": "*",
+  "entrypoints": {
+    "main": [
+      "io.github.codewithcharles.mcomputer.MComputer"
+    ]
+  },
+  "mixins": [
+    "mcomputer.mixins.json"
+  ],
+  "accessWidener": "mcomputer.ct",
+  "depends": {
+    "fabricloader": ">=0.19",
+    "minecraft": "${minecraft}"
+  }
+}

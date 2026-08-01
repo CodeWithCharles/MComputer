@@ -8,7 +8,7 @@
 # Gradle wrapper script must stay LF, even on Windows
 gradlew text eol=lf
 
-# Binary files — never touch
+# Binary files - never touch
 *.jar  binary
 *.png  binary
 *.ogg  binary

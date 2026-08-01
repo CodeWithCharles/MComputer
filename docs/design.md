@@ -14,7 +14,7 @@ than porting or forking the existing code (Scala, dated architecture).
 
 - Java, modern stack, fully under control
 - Clean architectural choices from day one
-- Controllable scope — no obligation to reimplement everything
+- Controllable scope - no obligation to reimplement everything
 - More motivating long-term than debugging third-party code
 
 **What we keep from the original concept** (MIT-licensed, free inspiration, no
@@ -27,9 +27,9 @@ code copied):
 **What we drop:**
 
 - Autonomous robots and drones, and anything involving movement or pathfinding
-- Cable networks and components distributed across the world — everything stays
+- Cable networks and components distributed across the world - everything stays
   inside the block
-- 3D screens, holograms, 3D printers, cross-mod integrations — all deferred
+- 3D screens, holograms, 3D printers, cross-mod integrations - all deferred
   until the project proves itself
 
 ## MVP scope
@@ -45,11 +45,11 @@ code copied):
 - RAM (memory ceiling for the Lua script)
 - Hard drive / floppy (persistent storage, simple filesystem)
 - Graphics card + screen (linked block, text and pixel output)
-- Network card — out of MVP scope, later
+- Network card - out of MVP scope, later
 
 ### The "mini Linux"
 
-- Sandboxed Lua VM running server-side (likely LuaJ on the JVM for the MVP —
+- Sandboxed Lua VM running server-side (likely LuaJ on the JVM for the MVP -
   easier to integrate than a native binding such as Eris)
 - A minimal Lua-scripted OS (OpenOS-style): basic shell, virtual filesystem,
   core commands (`ls`, `edit`, `run`)
@@ -58,10 +58,10 @@ code copied):
 ### Suggested development milestones
 
 1. A computer block that boots (on/off, static boot screen, no components)
-2. Embedded Lua VM — run a hardcoded script, output to the server log
-3. Screen and basic terminal — in-game text rendering, writable from Lua
-4. Real modular components — computer inventory, CPU/RAM affecting the VM
-5. Persistent filesystem — save/load, minimal Lua shell
+2. Embedded Lua VM - run a hardcoded script, output to the server log
+3. Screen and basic terminal - in-game text rendering, writable from Lua
+4. Real modular components - computer inventory, CPU/RAM affecting the VM
+5. Persistent filesystem - save/load, minimal Lua shell
 
 *Reaching milestone 3 already yields something playable and satisfying.*
 
@@ -80,7 +80,7 @@ chunk.
   under the world save directory, e.g. `world/data/mcomputer/disks/<uuid>.dat`
 - Lazy loading: the file is read only when the VM needs filesystem access, not
   every tick
-- No need for a real block/inode filesystem in the MVP — a simple
+- No need for a real block/inode filesystem in the MVP - a simple
   path-to-content map is enough
 
 ## Technical stack
@@ -88,27 +88,27 @@ chunk.
 | Item | Choice |
 |---|---|
 | Minecraft version | 26.2 (Mojang's new numbering, formerly the 1.21.x line) |
-| Loader | Fabric (Loader + API) — lighter than NeoForge, better for solo iteration |
+| Loader | Fabric (Loader + API) - lighter than NeoForge, better for solo iteration |
 | Build system | Gradle 9.5.1 + Fabric Loom 1.17 |
-| Loom plugin | `net.fabricmc.fabric-loom` — since 26.1 Minecraft ships unobfuscated, so **no remapping**. The older `fabric-loom-remap` plugin only applies to 1.21.11 and below. |
+| Loom plugin | `net.fabricmc.fabric-loom` - since 26.1 Minecraft ships unobfuscated, so **no remapping**. The older `fabric-loom-remap` plugin only applies to 1.21.11 and below. |
 | Multi-version | Stonecutter 0.9.7, starting with a single target (26.2) so the plumbing exists without the upfront cost |
 | Java | JDK 25 (required by Fabric from 26.1 onwards) |
 | Fabric Loader | 0.19.3 |
 | Fabric API | 0.152.2+26.2 |
 | IDE | IntelliJ IDEA 2025.3+ (required for mixin annotation processing) |
-| Multi-loader (Architectury) | **Rejected** for now — unnecessary complexity for a solo MVP. Revisit if NeoForge support becomes desirable. |
+| Multi-loader (Architectury) | **Rejected** for now - unnecessary complexity for a solo MVP. Revisit if NeoForge support becomes desirable. |
 
 ## Explored and rejected
 
-- **MightyPirates/OpenComputers** (original) — Scala, no official plan to port to
+- **MightyPirates/OpenComputers** (original) - Scala, no official plan to port to
   recent versions
-- **North-Western-Development/oc2r** — active fork of OpenComputers II
-  (RISC-V/Linux VM, not the sandboxed-Lua concept) — rejected as a different
+- **North-Western-Development/oc2r** - active fork of OpenComputers II
+  (RISC-V/Linux VM, not the sandboxed-Lua concept) - rejected as a different
   approach from classic OC
-- **SirDavidLudwig/OpenComputers-Reimagined** — Architectury rewrite attempt —
+- **SirDavidLudwig/OpenComputers-Reimagined** - Architectury rewrite attempt -
   inactive
-- **TheRealM18 / North-Western-Development — OpenComputers-1.20.1-port** —
-  direct port of the original — inactive
+- **TheRealM18 / North-Western-Development - OpenComputers-1.20.1-port** -
+  direct port of the original - inactive
 
 ## Next steps
 
