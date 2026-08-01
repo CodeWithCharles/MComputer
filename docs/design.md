@@ -46,14 +46,17 @@ code copied):
 - Hard drive / floppy (persistent storage, simple filesystem)
 - Graphics card + screen (linked block, text and pixel output)
 - Network card - out of MVP scope, later
+- Chunkloader - keeps the chunk loaded so a program survives the player walking
+  away
 
 ### The "mini Linux"
 
-- Sandboxed Lua VM running server-side (likely LuaJ on the JVM for the MVP -
-  easier to integrate than a native binding such as Eris)
+- Sandboxed Lua VM running server-side (LuaJ)
 - A minimal Lua-scripted OS (OpenOS-style): basic shell, virtual filesystem,
   core commands (`ls`, `edit`, `run`)
-- Persistence: state resumes where it stopped when the chunk reloads
+- **No VM state persistence.** A computer that was on when the world unloaded
+  reboots on load rather than resuming. The filesystem persists; execution does
+  not. See "Execution model" below.
 
 ### Suggested development milestones
 
@@ -83,20 +86,44 @@ chunk.
 - No need for a real block/inode filesystem in the MVP - a simple
   path-to-content map is enough
 
+## Execution model
+
+The server ticks at 20 TPS - 50 ms per tick - so Lua cannot run on the server
+thread. Slicing execution into per-tick instruction budgets would require
+pausing the VM at arbitrary points, which LuaJ cannot do.
+
+**Each computer therefore gets its own Java thread.** The Lua thread runs freely
+and blocks when it needs anything from the game, handing the request to the
+server thread through a queue; the server thread executes it during the tick and
+wakes the Lua thread with the result. This is OpenComputers' model.
+
+- The Lua thread never touches the world directly. Everything goes through the
+  queue.
+- An instruction budget, enforced via debug hook, kills infinite loops and forces
+  breathing points. CPU tier maps to instructions per slice.
+- A Lua thread that does not yield within a few seconds is killed.
+- Cost: one thread per *running* computer. Fine at this scale.
+
+**Consequence for persistence:** resuming execution mid-script would require
+serialising the VM. CC: Tweaked maintains a whole LuaJ fork (Cobalt) to make
+that possible and still chooses to reboot computers on world load. We reboot
+too. A well-written Lua program saves its state to disk and reloads it at boot -
+the constraint becomes a gameplay mechanic.
+
 ## Technical stack
 
-| Item | Choice |
-|---|---|
-| Minecraft version | 26.2 (Mojang's new numbering, formerly the 1.21.x line) |
-| Loader | Fabric (Loader + API) - lighter than NeoForge, better for solo iteration |
-| Build system | Gradle 9.5.1 + Fabric Loom 1.17 |
+| Item | Choice                                                                                                                                                             |
+|---|--------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Minecraft version | 26.2 (Mojang's new numbering, formerly the 1.21.x line)                                                                                                            |
+| Loader | Fabric (Loader + API) - lighter than NeoForge, better for solo iteration                                                                                           |
+| Build system | Gradle 9.6.1 + Fabric Loom 1.17                                                                                                                                    |
 | Loom plugin | `net.fabricmc.fabric-loom` - since 26.1 Minecraft ships unobfuscated, so **no remapping**. The older `fabric-loom-remap` plugin only applies to 1.21.11 and below. |
-| Multi-version | Stonecutter 0.9.7, starting with a single target (26.2) so the plumbing exists without the upfront cost |
-| Java | JDK 25 (required by Fabric from 26.1 onwards) |
-| Fabric Loader | 0.19.3 |
-| Fabric API | 0.152.2+26.2 |
-| IDE | IntelliJ IDEA 2025.3+ (required for mixin annotation processing) |
-| Multi-loader (Architectury) | **Rejected** for now - unnecessary complexity for a solo MVP. Revisit if NeoForge support becomes desirable. |
+| Multi-version | Stonecutter 0.9.7, starting with a single target (26.2) so the plumbing exists without the upfront cost                                                            |
+| Java | JDK 25 (required by Fabric from 26.1 onwards)                                                                                                                      |
+| Fabric Loader | 0.19.3                                                                                                                                                             |
+| Fabric API | 0.152.2+26.2                                                                                                                                                       |
+| IDE | IntelliJ IDEA 2025.3+ (required for mixin annotation processing)                                                                                                   |
+| Multi-loader (Architectury) | **Rejected** for now - unnecessary complexity for a solo MVP. Revisit if NeoForge support becomes desirable.                                                       |
 
 ## Explored and rejected
 
@@ -112,6 +139,6 @@ chunk.
 
 ## Next steps
 
-- Project skeleton (Stonecutter + Loom, `fabric.mod.json`)
+- Component addressing and the Java/Lua value boundary
 - First basic computer block (milestone 1)
-- Detailed design of the Lua VM and the LuaJ integration
+- LuaJ integration: sandboxing and instruction budget
