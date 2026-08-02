@@ -33,6 +33,7 @@ repositories {
 }
 
 dependencies {
+    val luaj = "org.luaj:luaj-jse:3.0.1"
     /**
      * Fetches only the required Fabric API modules to not waste time downloading all of them for each version.
      * @see <a href="https://github.com/FabricMC/fabric">List of Fabric API modules</a>
@@ -52,6 +53,8 @@ dependencies {
     testImplementation("org.junit.jupiter:junit-jupiter")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
     testImplementation("com.tngtech.archunit:archunit:1.4.2")
+    implementation(luaj)
+    include(luaj)
 }
 
 loom {
