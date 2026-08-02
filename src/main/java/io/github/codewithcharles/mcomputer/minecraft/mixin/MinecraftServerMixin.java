@@ -1,4 +1,4 @@
-package io.github.codewithcharles.mcomputer.mixin;
+package io.github.codewithcharles.mcomputer.minecraft.mixin;
 
 import io.github.codewithcharles.mcomputer.MComputer;
 import net.minecraft.server.MinecraftServer;
