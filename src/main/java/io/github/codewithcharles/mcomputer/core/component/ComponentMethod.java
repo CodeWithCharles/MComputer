@@ -24,9 +24,13 @@ package io.github.codewithcharles.mcomputer.core.component;
  */
 @FunctionalInterface
 public interface ComponentMethod {
+
     /**
-     * @param arguments boundary values from the Lua caller, never {@code null}
-     * @return boundary values, possibly empty, ever {@code null}
+     * @param arguments the call's arguments, already validated as boundary
+     *                  values, never {@code null}
+     * @return boundary values, possibly empty, never {@code null}
+     * @throws ComponentException if the arguments do not satisfy this method's
+     *                            contract, or the operation cannot be performed
      */
-    Object[] invoke(Object[] arguments);
+    Object[] invoke(Arguments arguments);
 }
