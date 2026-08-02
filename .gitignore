@@ -10,6 +10,7 @@ versions/*/build/
 run/
 runs/
 remappedSrc/
+versions/*/logs/
 
 # IntelliJ
 .idea/
