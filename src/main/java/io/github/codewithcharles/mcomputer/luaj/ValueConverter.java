@@ -142,6 +142,20 @@ public final class ValueConverter {
         return key.tojstring();
     }
 
+    private LuaTable mapToLua(Map<?, ?> map, int depth, Budget budget) {
+        if (depth <= 0) {
+            throw new IllegalStateException("table too deep (possible cycle)");
+        }
+        LuaTable out = new LuaTable();
+        for (Map.Entry<?, ?> entry : map.entrySet()) {
+            if (!budget.trySpend()) {
+                throw new IllegalStateException("table has too many entries");
+            }
+            out.set(keyToLua(entry.getKey()), toLua(entry.getValue(), depth - 1, budget));
+        }
+        return out;
+    }
+
     private LuaTable listToLua(List<?> list, int depth, Budget budget) {
         if (depth <= 0) {
             throw new IllegalStateException("table too deep (possible cycle)");
@@ -154,6 +168,21 @@ public final class ValueConverter {
             out.set(i + 1, toLua(list.get(i), depth - 1, budget));  // Lua indexes from 1
         }
         return out;
+    }
+
+    /**
+     * Accept a String while toLua refuses it because keys becomes String and values keeps their bytes.
+     * @param key key to convert
+     * @return The key to lua value
+     */
+    private static LuaValue keyToLua(Object key) {
+        return switch (key) {
+            case String text -> LuaValue.valueOf(text);
+            case Double number -> LuaValue.valueOf(number);
+            case null, default -> throw new IllegalStateException(
+                    "unsupported table key: "
+                            + (key == null ? "null" : key.getClass().getName()));
+        };
     }
 
     private Object toJava(LuaValue value, int depth, Budget budget) {
@@ -174,8 +203,8 @@ public final class ValueConverter {
             case Boolean b  -> LuaValue.valueOf(b);
             case Double d  -> LuaValue.valueOf(d);
             case byte[] bytes  -> LuaValue.valueOf(bytes);
-            case Map<?, ?> _, List<?> _ -> throw new UnsupportedOperationException(
-                    "tables land in wave 2");
+            case Map<?, ?> map -> mapToLua(map, depth, budget);
+            case List<?> list -> listToLua(list, depth, budget);
             default -> throw new IllegalStateException(
                     "value outside the boundary: " + value.getClass().getName());
         };

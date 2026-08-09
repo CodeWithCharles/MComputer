@@ -12,6 +12,8 @@ import org.junit.jupiter.params.provider.MethodSource;
 import org.luaj.vm2.*;
 import org.luaj.vm2.lib.ZeroArgFunction;
 
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Stream;
@@ -28,6 +30,18 @@ public class ValueConverterTest {
 
     private LuaValue outbound(Object value) {
         return _converter.toLua(new Object[] { value }).arg1();
+    }
+
+    private LuaTable outboundTable(Object value) {
+        LuaValue back = outbound(value);
+        assertEquals(LuaValue.TTABLE, back.type());
+        return back.checktable();
+    }
+
+    private static byte[] bytesOf(LuaString string) {
+        byte[] out = new byte[string.length()];
+        string.copyInto(0, out, 0, out.length);
+        return out;
     }
 
     static Stream<Named<Object>> outsideTheBoundary() {
@@ -196,5 +210,53 @@ public class ValueConverterTest {
         Map<?, ?> map = (Map<?, ?>) inbound(outer);
 
         assertEquals(Map.of("deep", true), map.get("inner"));
+    }
+
+    @Test
+    void anEmptyMapBecomesAnEmptyTable() {
+        LuaTable table = outboundTable(Map.of());
+
+        assertTrue(table.next(LuaValue.NIL).isnil(1));
+    }
+
+    @Test
+    void aMapBecomesATableWithTheSameEntries() {
+        LuaTable table = outboundTable(Map.of("name", "abc".getBytes(UTF_8)));
+
+        LuaValue value = table.get(LuaValue.valueOf("name"));
+        assertEquals(LuaValue.TSTRING, value.type());
+        assertArrayEquals("abc".getBytes(UTF_8), bytesOf(value.checkstring()));
+    }
+
+    @Test
+    void aListBecomesKeysOneToN() {
+        LuaTable table = outboundTable(List.of(true, false));
+
+        assertEquals(2, table.length());
+        assertTrue(table.get(0).isnil());   // Lua indexes from 1, not 0
+        assertTrue(table.get(1).toboolean());
+        assertFalse(table.get(2).toboolean());
+    }
+
+    @Test
+    void aStringIsAValidKeyButNotAValidValue() {
+        LuaTable table = outboundTable(Map.of("name", true));
+
+        assertEquals("string", table.next(LuaValue.NIL).arg(1).typename());
+        assertTrue(table.get(LuaValue.valueOf("name")).toboolean());
+
+        assertThrows(IllegalStateException.class, () -> outbound(Map.of("name", "abc")));
+    }
+
+    @Test
+    void aNullValueMakesTheKeyDisappear() {
+        Map<String, Object> source = new HashMap<>();
+        source.put("gone", null);
+        source.put("kept", true);
+
+        LuaTable table = outboundTable(source);
+
+        assertTrue(table.get(LuaValue.valueOf("gone")).isnil());
+        assertTrue(table.get(LuaValue.valueOf("kept")).toboolean());
     }
 }
