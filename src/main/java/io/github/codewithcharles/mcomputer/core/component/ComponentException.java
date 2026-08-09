@@ -1,5 +1,8 @@
 package io.github.codewithcharles.mcomputer.core.component;
 
+import java.util.List;
+import java.util.Map;
+
 /**
  * An <b>expected</b> failure of a component call, to be converted into a Lua
  * error at the boundary.
@@ -28,6 +31,42 @@ public class ComponentException extends RuntimeException {
      * @param index zero-based, as used by {@link Arguments}; rendered one-based
      */
     public static ComponentException badArgument(int index, String expected, Object actual) {
-        throw new UnsupportedOperationException("not implemented");
+        return badArgument(index, expected + " expected, got " + typeName(actual));
+    }
+
+    /**
+     * The same envelope, with the reason written out in full. For the failures
+     * where the type is <b>correct</b> and "number expected, got number" would
+     * be nonsense: an integer accessor handed 1.5, a text accessor handed bytes
+     * that are not valid UTF-8.
+     *
+     * @param index zero-based, as used by {@link Arguments}; rendered one-based
+     */
+    public static ComponentException badArgument(int index, String reason) {
+        return new ComponentException("bad argument #" + (index + 1) + " (" + reason + ")");
+    }
+
+    /**
+     * The boundary's Java types, rendered in Lua's own vocabulary.
+     *
+     * <p>{@code core} may not see {@code org.luaj}, so {@code LuaValue.typename()}
+     * is out of reach here - and it would be the wrong tool anyway, since what
+     * arrives at this point is a converted Java value, not a {@code LuaValue}.
+     *
+     * <p>The default arm should be unreachable: the converter rejected anything
+     * off the closed list before a component method ever saw it. It reports the
+     * Java name deliberately - if it ever fires, the log must say which type got
+     * through rather than hide it behind a plausible-looking Lua name.
+     */
+    private static String typeName(Object value) {
+        return switch (value) {
+            case null -> "nil";
+            case Boolean _ -> "boolean";
+            case Double _ -> "number";
+            case byte[] _ -> "string";
+            case Map<?, ?> _ -> "table";
+            case List<?> _ -> "table";
+            default -> value.getClass().getSimpleName();
+        };
     }
 }

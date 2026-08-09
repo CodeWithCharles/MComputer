@@ -1,5 +1,12 @@
 package io.github.codewithcharles.mcomputer.core.component;
 
+import java.nio.ByteBuffer;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.CodingErrorAction;
+import java.util.Objects;
+
+import static java.nio.charset.StandardCharsets.UTF_8;
+
 /**
  * A read-only, checked view over the arguments of one component call.
  *
@@ -14,34 +21,59 @@ package io.github.codewithcharles.mcomputer.core.component;
  *
  * <p>A missing argument and an explicit {@code nil} are not distinguished. Lua
  * itself barely distinguishes them, and no component has a reason to.
+ *
+ * <p>The array is <b>taken over, not copied</b>. The converter builds it fresh
+ * for one call and does not retain it. A defensive copy would be a half
+ * guarantee anyway - the {@code byte[]} elements would stay mutable - paid for
+ * with an allocation on every component call.
  */
 public final class Arguments {
 
     private final Object[] values;
 
     public Arguments(Object[] values) {
-        throw new UnsupportedOperationException("not implemented");
+        this.values = Objects.requireNonNull(values, "values");
+    }
+
+    private Object at(int index) {
+        if (index < 0) {
+            throw new IndexOutOfBoundsException("argument index " + index + " is negative");
+        }
+        return index < values.length ? values[index] : null;
+    }
+
+    /**
+     * The shape shared by every typed accessor: read, test, or report. The Lua
+     * name is passed in rather than derived, because it is what the player must
+     * read - {@code byte[]} is called {@code string} on that side.
+     */
+    private <T> T check(int index, Class<T> type, String luaName) {
+        Object value = at(index);
+        if (type.isInstance(value)) {
+            return type.cast(value);
+        }
+        throw ComponentException.badArgument(index, luaName, value);
     }
 
     /** How many arguments the caller passed. */
     public int count() {
-        throw new UnsupportedOperationException("not implemented");
+        return values.length;
     }
 
     /** True if the position is past the end, or holds {@code null}. */
     public boolean isNull(int index) {
-        throw new UnsupportedOperationException("not implemented");
+        return at(index) == null;
     }
 
     // --- required ---------------------------------------------------------
     // Each throws ComponentException.badArgument if absent or of the wrong type.
 
     public boolean checkBoolean(int index) {
-        throw new UnsupportedOperationException("not implemented");
+        return check(index, Boolean.class, "boolean");
     }
 
     public double checkDouble(int index) {
-        throw new UnsupportedOperationException("not implemented");
+        return check(index, Double.class, "number");
     }
 
     /**
@@ -50,12 +82,18 @@ public final class Arguments {
      * so this check cannot be pushed onto the caller.
      */
     public int checkInt(int index) {
-        throw new UnsupportedOperationException("not implemented");
+        double value = checkDouble(index);
+        if (!Double.isFinite(value) || value != Math.rint(value)
+                || value < Integer.MIN_VALUE || value > Integer.MAX_VALUE) {
+            throw ComponentException.badArgument(index,
+                    "number has no integer representation");
+        }
+        return (int) value;
     }
 
     /** The raw bytes of a Lua string. Use this unless you truly mean text. */
     public byte[] checkBytes(int index) {
-        throw new UnsupportedOperationException("not implemented");
+        return check(index, byte[].class, "string");
     }
 
     /**
@@ -63,7 +101,16 @@ public final class Arguments {
      * a file path, a colour name. Never for file contents.
      */
     public String checkText(int index) {
-        throw new UnsupportedOperationException("not implemented");
+        byte[] bytes = checkBytes(index);
+        try {
+            return UTF_8.newDecoder()
+                    .onMalformedInput(CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(CodingErrorAction.REPORT)
+                    .decode(ByteBuffer.wrap(bytes))
+                    .toString();
+        } catch (CharacterCodingException malformed) {
+            throw ComponentException.badArgument(index, "invalid UTF-8 string");
+        }
     }
 
     // --- optional ---------------------------------------------------------
@@ -71,23 +118,23 @@ public final class Arguments {
     // present value of the wrong type.
 
     public boolean optBoolean(int index, boolean fallback) {
-        throw new UnsupportedOperationException("not implemented");
+        return isNull(index) ? fallback : checkBoolean(index);
     }
 
     public double optDouble(int index, double fallback) {
-        throw new UnsupportedOperationException("not implemented");
+        return isNull(index) ? fallback : checkDouble(index);
     }
 
     public int optInt(int index, int fallback) {
-        throw new UnsupportedOperationException("not implemented");
+        return isNull(index) ? fallback : checkInt(index);
     }
 
     public byte[] optBytes(int index, byte[] fallback) {
-        throw new UnsupportedOperationException("not implemented");
+        return isNull(index) ? fallback : checkBytes(index);
     }
 
     public String optText(int index, String fallback) {
-        throw new UnsupportedOperationException("not implemented");
+        return isNull(index) ? fallback : checkText(index);
     }
 
     /**
@@ -96,6 +143,6 @@ public final class Arguments {
      * every use is a small hole in the contract.
      */
     public Object raw(int index) {
-        throw new UnsupportedOperationException("not implemented");
+        return at(index);
     }
 }
