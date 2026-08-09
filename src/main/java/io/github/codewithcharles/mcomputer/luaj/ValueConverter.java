@@ -3,9 +3,11 @@ package io.github.codewithcharles.mcomputer.luaj;
 import io.github.codewithcharles.mcomputer.core.component.BoundaryLimits;
 import io.github.codewithcharles.mcomputer.core.component.ComponentException;
 import org.luaj.vm2.LuaString;
+import org.luaj.vm2.LuaTable;
 import org.luaj.vm2.LuaValue;
 import org.luaj.vm2.Varargs;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -93,16 +95,66 @@ public final class ValueConverter {
         return LuaValue.varargsOf(out);
     }
 
+    // --- the recursion ----------------------------------------------------
+    // Depth is counted down, the entry budget is shared across the whole walk.
+    // Both are threaded through the recursion rather than held as fields, so
+    // the converter stays stateless and one call cannot poison the next.
+
+
     private static byte[] bytesOf(LuaString string) {
         byte[] out = new byte[string.length()];
         string.copyInto(0, out, 0, out.length);
         return out;
     }
 
-    // --- the recursion ----------------------------------------------------
-    // Depth is counted down, the entry budget is shared across the whole walk.
-    // Both are threaded through the recursion rather than held as fields, so
-    // the converter stays stateless and one call cannot poison the next.
+    private Map<Object, Object> tableToJava(LuaTable table, int depth, Budget budget) {
+        if (depth <= 0) {
+            throw new ComponentException("table too deep (possible cycle)");
+        }
+        Map<Object, Object> out = new LinkedHashMap<>();
+        LuaValue key = LuaValue.NIL;
+        while (true) {
+            Varargs entry = table.next(key);
+            if (entry.isnil(1)) {
+                return out;
+            }
+            if (!budget.trySpend()) {
+                throw new ComponentException("table has too many entries");
+            }
+            key = entry.arg(1);
+            out.put(keyToJava(key), toJava(entry.arg(2), depth - 1, budget));
+        }
+    }
+
+    private static Object keyToJava(LuaValue key) {
+        return switch (key.type()) {
+            case LuaValue.TSTRING -> textKey(key.checkstring());
+            case LuaValue.TNUMBER -> key.todouble();
+            default -> throw new ComponentException(
+                    "unsupported table key (" + key.typename() + ")");
+        };
+    }
+
+    private static String textKey(LuaString key) {
+        if (!key.isValidUtf8()) {
+            throw new ComponentException("table key is not valid UTF-8");
+        }
+        return key.tojstring();
+    }
+
+    private LuaTable listToLua(List<?> list, int depth, Budget budget) {
+        if (depth <= 0) {
+            throw new IllegalStateException("table too deep (possible cycle)");
+        }
+        LuaTable out = new LuaTable();
+        for (int i = 0; i < list.size(); i++) {
+            if (!budget.trySpend()) {
+                throw new IllegalStateException("table has too many entries");
+            }
+            out.set(i + 1, toLua(list.get(i), depth - 1, budget));  // Lua indexes from 1
+        }
+        return out;
+    }
 
     private Object toJava(LuaValue value, int depth, Budget budget) {
         return switch (value.type()) {
@@ -110,8 +162,7 @@ public final class ValueConverter {
             case LuaValue.TBOOLEAN  -> value.toboolean();
             case LuaValue.TNUMBER   -> value.todouble();
             case LuaValue.TSTRING   -> bytesOf(value.checkstring());
-            case LuaValue.TTABLE    -> throw new UnsupportedOperationException(
-                    "tables not implemented yet");
+            case LuaValue.TTABLE    -> tableToJava(value.checktable(), depth, budget);
             default -> throw new ComponentException(
                     "unsupported value (" + value.typename() + ")");
         };
@@ -124,7 +175,7 @@ public final class ValueConverter {
             case Double d  -> LuaValue.valueOf(d);
             case byte[] bytes  -> LuaValue.valueOf(bytes);
             case Map<?, ?> _, List<?> _ -> throw new UnsupportedOperationException(
-                    "tables not implemented yet");
+                    "tables land in wave 2");
             default -> throw new IllegalStateException(
                     "value outside the boundary: " + value.getClass().getName());
         };

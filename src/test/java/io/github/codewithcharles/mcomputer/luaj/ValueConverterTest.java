@@ -5,12 +5,15 @@ import io.github.codewithcharles.mcomputer.core.component.ComponentException;
 import org.junit.jupiter.api.Named;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
+import static java.nio.charset.StandardCharsets.UTF_8;
 
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.luaj.vm2.*;
 import org.luaj.vm2.lib.ZeroArgFunction;
 
+import java.util.Map;
+import java.util.Set;
 import java.util.stream.Stream;
 
 public class ValueConverterTest {
@@ -136,5 +139,62 @@ public class ValueConverterTest {
     @Test
     void noReturnValuesGivesNone() {
         assertEquals(0, _converter.toLua(new Object[0]).narg());
+    }
+
+    @Test
+    void anEmptyTableBecomesAnEmptyMap() {
+        assertEquals(Map.of(), inbound(new LuaTable()));
+    }
+
+    @Test
+    void aFlatTableRoundTrips() {
+        LuaTable table = new LuaTable();
+        table.set(LuaValue.valueOf("name"), LuaValue.valueOf("abc"));
+        table.set(LuaValue.valueOf("size"), LuaValue.valueOf(3));
+
+        Map<?, ?> map = (Map<?, ?>) inbound(table);
+
+        assertEquals(Set.of("name", "size"), map.keySet());
+        assertArrayEquals("abc".getBytes(UTF_8), (byte[]) map.get("name"));
+        assertEquals(3.0, (Double) map.get("size"));
+    }
+
+    @Test
+    void aNumericKeyBecomesADouble() {
+        LuaTable table = new LuaTable();
+        table.set(1, LuaValue.valueOf("a"));
+
+        Map<?, ?> map = (Map<?, ?>) inbound(table);
+
+        assertEquals(Set.of(1.0), map.keySet());
+    }
+
+    @Test
+    void aBooleanKeyIsRejected() {
+        LuaTable table = new LuaTable();
+        table.set(LuaValue.TRUE, LuaValue.valueOf("a"));
+
+        assertThrows(ComponentException.class, () -> inbound(table));
+    }
+
+    @Test
+    void aKeyWhoseBytesAreNotValidUtf8IsRejected() {
+        LuaTable table = new LuaTable();
+        table.set(LuaValue.valueOf(new byte[] { (byte) 0xFF }), LuaValue.valueOf("a"));
+
+        assertThrows(ComponentException.class, () -> inbound(table));
+    }
+
+    @Test
+    void aNestedTableBecomesANestedMap() {
+        LuaTable inner = new LuaTable();
+        inner.set(LuaValue.valueOf("deep"), LuaValue.TRUE);
+
+        LuaTable outer = new LuaTable();
+        outer.set(LuaValue.valueOf("inner"), inner);
+
+        Map<?, ?> map = (Map<?, ?>) inbound(outer);
+
+        assertEquals(Map.of("deep", true), map.get("inner"));
     }
 }
