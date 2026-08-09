@@ -1,5 +1,9 @@
 package io.github.codewithcharles.mcomputer.core.component;
 
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 
@@ -24,29 +28,40 @@ import java.util.Set;
  */
 public final class ComponentApi {
 
+    private final String type;
+    private final Map<String, ComponentMethod> methods;
+
+    private ComponentApi(String type, Map<String, ComponentMethod> methods) {
+        this.type = type;
+        this.methods = methods;
+    }
+
     public static Builder builder(String type) {
-        throw new UnsupportedOperationException("not implemented");
+        return new Builder(type);
     }
 
     /** The Lua-visible type name, as reported by {@code component.list()}. */
     public String type() {
-        throw new UnsupportedOperationException("not implemented");
+        return type;
     }
 
     /** Backs {@code component.methods(address)}. */
     public Set<String> methodNames() {
-        throw new UnsupportedOperationException("not implemented");
+        return methods.keySet();
     }
 
     /** Empty when no such method exists; the caller decides what that means. */
     public Optional<ComponentMethod> method(String name) {
-        throw new UnsupportedOperationException("not implemented");
+        return Optional.ofNullable(methods.get(name));
     }
 
     public static final class Builder {
 
+        private final String type;
+        private final Map<String, ComponentMethod> methods = new LinkedHashMap<>();
+
         private Builder(String type) {
-            throw new UnsupportedOperationException("not implemented");
+            this.type = Objects.requireNonNull(type, "type");
         }
 
         /**
@@ -55,11 +70,22 @@ public final class ComponentApi {
          *         missing feature hours later.
          */
         public Builder method(String name, ComponentMethod method) {
-            throw new UnsupportedOperationException("not implemented");
+            Objects.requireNonNull(name, "name");
+            Objects.requireNonNull(method, "method");
+            if (methods.putIfAbsent(name, method) != null) {
+                throw new IllegalArgumentException(
+                        "duplicate method '" + name + "' on component type '" + type + "'");
+            }
+            return this;
         }
 
+        /**
+         * Callable more than once; each call yields an independent instance.
+         * The copy the immutability needs is the same copy that makes reuse
+         * safe, so nothing is spent on forbidding it.
+         */
         public ComponentApi build() {
-            throw new UnsupportedOperationException("not implemented");
+            return new ComponentApi(type, Collections.unmodifiableMap(new LinkedHashMap<>(methods)));
         }
     }
 }
