@@ -44,6 +44,24 @@ public class ValueConverterTest {
         return out;
     }
 
+    private static ValueConverter tightly(int depth, int entries) {
+        return new ValueConverter(new BoundaryLimits(depth, entries));
+    }
+
+    private static LuaTable tableOf(String key, LuaValue value) {
+        LuaTable table = new LuaTable();
+        table.set(LuaValue.valueOf(key), value);
+        return table;
+    }
+
+    private static LuaTable tableWithEntries(int count) {
+        LuaTable table = new LuaTable();
+        for (int i = 1; i <= count; i++) {
+            table.set(i, LuaValue.TRUE);
+        }
+        return table;
+    }
+
     static Stream<Named<Object>> outsideTheBoundary() {
         return Stream.of(
                 Named.of("Long - the silent precision bug past 2^53", 42L),
@@ -258,5 +276,56 @@ public class ValueConverterTest {
 
         assertTrue(table.get(LuaValue.valueOf("gone")).isnil());
         assertTrue(table.get(LuaValue.valueOf("kept")).toboolean());
+    }
+
+    @Test
+    void nestingUpToTheDepthLimitIsPermitted() {
+        LuaTable twoLevels = tableOf("a", tableOf("b", LuaValue.TRUE));
+
+        assertDoesNotThrow(() -> tightly(2, 10).toJava(twoLevels));
+    }
+
+    @Test
+    void nestingPastTheDepthLimitIsRejected() {
+        LuaTable threeLevels = tableOf("a", tableOf("b", tableOf("c", LuaValue.TRUE)));
+
+        assertThrows(ComponentException.class, () -> tightly(2, 10).toJava(threeLevels));
+    }
+
+    @Test
+    void aTableAtTheEntryBudgetIsPermitted() {
+        assertDoesNotThrow(() -> tightly(8, 10).toJava(tableWithEntries(10)));
+    }
+
+    @Test
+    void aTablePastTheEntryBudgetIsRejected() {
+        assertThrows(ComponentException.class,
+                () -> tightly(8, 10).toJava(tableWithEntries(11)));
+    }
+
+    @Test
+    void theEntryBudgetIsTotalNotPerTable() {
+        LuaTable outer = new LuaTable();
+        outer.set(LuaValue.valueOf("first"), tableWithEntries(6));
+        outer.set(LuaValue.valueOf("second"), tableWithEntries(6));
+
+        assertThrows(ComponentException.class, () -> tightly(8, 10).toJava(outer));
+    }
+
+    @Test
+    void aSelfReferencingTableFailsOnDepthNotOnStackOverflow() {
+        LuaTable table = new LuaTable();
+        table.set(LuaValue.valueOf("self"), table);
+
+        assertThrows(ComponentException.class, () -> tightly(2, 10).toJava(table));
+    }
+
+    @Test
+    void anOutboundCycleFailsOnDepthNotOnStackOverflow() {
+        Map<String, Object> map = new HashMap<>();
+        map.put("self", map);
+
+        assertThrows(IllegalStateException.class,
+                () -> tightly(2, 10).toLua(new Object[] { map }));
     }
 }
