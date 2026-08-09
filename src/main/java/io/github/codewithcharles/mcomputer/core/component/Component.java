@@ -1,5 +1,6 @@
 package io.github.codewithcharles.mcomputer.core.component;
 
+import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -13,10 +14,11 @@ import java.util.UUID;
 public record Component(UUID address, ComponentApi api) {
 
     public Component {
-        throw new UnsupportedOperationException("not implemented");
+        Objects.requireNonNull(address, "address");
+        Objects.requireNonNull(api, "api");
     }
 
     public String type() {
-        throw new UnsupportedOperationException("not implemented");
+        return api.type();
     }
 }
