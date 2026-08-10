@@ -1,7 +1,11 @@
 package io.github.codewithcharles.mcomputer.core.component;
 
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.UUID;
+
+import static java.nio.charset.StandardCharsets.UTF_8;
 
 /**
  * What a computer's Lua side calls to reach its components: address to
@@ -41,7 +45,12 @@ public class ComponentBus {
      * @return the method's return values, several by design
      */
     public Object[] invoke(String address, String methodName, Object[] arguments) {
-        throw new UnsupportedOperationException("not implemented");
+        Component component = resolve(address);
+        ComponentMethod method = component.api().method(methodName)
+                .orElseThrow(() -> new ComponentException(
+                        "unknown method '" + methodName + "' on component '" + component.type() + "'"));
+
+        return method.invoke(new Arguments(arguments, methodName));
     }
 
     /**
@@ -50,7 +59,11 @@ public class ComponentBus {
      * list for keys is not the closed list for values.
      */
     public Map<String, byte[]> list() {
-        throw new UnsupportedOperationException("not implemented");
+        Map<String, byte[]> listed = new LinkedHashMap<>();
+        registry.list().forEach(
+                (address, type) -> listed.put(address.toString(), type.getBytes(UTF_8)));
+
+        return listed;
     }
 
     /**
@@ -61,6 +74,17 @@ public class ComponentBus {
      * as a different component to whoever typed it in capitals.
      */
     private Component resolve(String address) {
-        throw new UnsupportedOperationException("not implemented");
+        Objects.requireNonNull(address, "address");
+        UUID parsed;
+        try {
+            parsed = UUID.fromString(address);
+        } catch (IllegalArgumentException malformed) {
+            throw noSuchComponent(address);
+        }
+        return registry.find(parsed).orElseThrow(() -> noSuchComponent(address));
+    }
+
+    private static ComponentException noSuchComponent(String address) {
+        return new ComponentException("no such component '" + address + "'");
     }
 }
