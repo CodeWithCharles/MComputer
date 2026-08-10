@@ -17,7 +17,7 @@ package io.github.codewithcharles.mcomputer.core.machine;
 public final class CallQueue {
 
     /**
-     * Called form a Lua thread. Blcoks until the server thread has run the task.
+     * Called from a Lua thread. Blocks until the server thread has run the task.
      *
      * @return whatever the task returned
      * @throws InterruptedException if the calling thread is interrupted, which
