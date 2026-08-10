@@ -3,10 +3,9 @@ package io.github.codewithcharles.mcomputer.core.machine;
 /**
  * One computer, seen from the side that does not know Minecraft exists.
  *
- * <p>Holds the on/off state and, while running, the {@link CallQueue} its Lua
- * thread hands work through. The adapter layer owns a block entity that
- * delegates here; everything a test would want to assert lives on this side of
- * the boundary, which is what keeps the adapter thin enough to verify by eye.
+ * <p>Its {@link CallQueue} <b>is</b> its state: a machine is on exactly when it
+ * has one. There is no separate flag, so "running with no queue" is not a state
+ * this class can be in.
  *
  * <p><b>A queue lives for one run, not for the machine.</b> {@code shutdown()}
  * is terminal, so {@code stop()} discards the queue and {@code start()} builds
@@ -19,7 +18,6 @@ public final class Machine {
 
     private final int maxTasksPerTick;
 
-    private boolean running;
     private CallQueue callQueue;
 
     /**
