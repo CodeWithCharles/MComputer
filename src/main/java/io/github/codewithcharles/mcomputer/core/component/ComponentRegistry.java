@@ -1,8 +1,6 @@
 package io.github.codewithcharles.mcomputer.core.component;
 
-import java.util.Map;
-import java.util.Optional;
-import java.util.UUID;
+import java.util.*;
 
 /**
  * The components installed in <b>one</b> computer.
@@ -21,18 +19,25 @@ import java.util.UUID;
  */
 public final class ComponentRegistry {
 
+    private final Map<UUID, Component> components = new LinkedHashMap<>();
+
     public void add(Component component) {
-        throw new UnsupportedOperationException("not implemented");
+        Objects.requireNonNull(component, "component");
+        Component existing = components.putIfAbsent(component.address(), component);
+        if (existing != null) {
+            throw new IllegalArgumentException(
+                    "address " + component.address() + " already holds a " + existing.type());
+        }
     }
 
     /** Does nothing if no component is installed at that address. */
     public void remove(UUID address) {
-        throw new UnsupportedOperationException("not implemented");
+        components.remove(address);
     }
 
     /** Empty if nothing is installed at that address in <b>this</b> machine. */
     public Optional<Component> find(UUID address) {
-        throw new UnsupportedOperationException("not implemented");
+        return Optional.ofNullable(components.get(address));
     }
 
     /**
@@ -41,6 +46,8 @@ public final class ComponentRegistry {
      * had and nothing to gain by returning one.
      */
     public Map<UUID, String> list() {
-        throw new UnsupportedOperationException("not implemented");
+        Map<UUID, String> byAddress = new LinkedHashMap<>();
+        components.forEach((address, component) -> byAddress.put(address, component.type()));
+        return byAddress;
     }
 }
