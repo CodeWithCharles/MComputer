@@ -1,5 +1,7 @@
 package io.github.codewithcharles.mcomputer;
 
+import io.github.codewithcharles.mcomputer.minecraft.block.MComputerBlocks;
+import io.github.codewithcharles.mcomputer.minecraft.block.entity.MComputerBlockEntities;
 import net.fabricmc.api.ModInitializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,5 +21,7 @@ public class MComputer implements ModInitializer {
     @Override
     public void onInitialize() {
         LOGGER.info("Hello World from MComputer {} on Minecraft {}", VERSION, MINECRAFT);
+        MComputerBlocks.register();
+        MComputerBlockEntities.register();
     }
 }

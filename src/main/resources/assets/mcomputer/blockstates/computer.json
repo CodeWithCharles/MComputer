@@ -1,0 +1,6 @@
+{
+  "variants": {
+    "lit=false": { "model": "mcomputer:block/computer" },
+    "lit=true": { "model": "mcomputer:block/computer_on" }
+  }
+}
