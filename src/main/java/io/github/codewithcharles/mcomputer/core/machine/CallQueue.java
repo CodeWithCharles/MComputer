@@ -1,5 +1,10 @@
 package io.github.codewithcharles.mcomputer.core.machine;
 
+import java.util.Objects;
+import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.CountDownLatch;
+
 /**
  * The hand-off between a Lua thread and the server thread.
  *
@@ -16,6 +21,9 @@ package io.github.codewithcharles.mcomputer.core.machine;
  */
 public final class CallQueue {
 
+    private final Queue<Entry> pending = new ConcurrentLinkedQueue<>();
+    private volatile boolean shutdown;
+
     /**
      * Called from a Lua thread. Blocks until the server thread has run the task.
      *
@@ -25,7 +33,29 @@ public final class CallQueue {
      * @throws IllegalStateException if the queue has been shut down
      */
     public Object[] submit(ServerTask task) throws InterruptedException {
-        throw new UnsupportedOperationException("not implemented");
+        Objects.requireNonNull(task, "task");
+        if (shutdown) {
+            throw shutDown();
+        }
+
+        Entry entry = new Entry(task);
+        pending.add(entry);
+        if (shutdown && pending.remove(entry)) {
+            throw shutDown();
+        }
+
+        try {
+            entry.done.await();
+        } catch (InterruptedException interrupted) {
+            pending.remove(entry);
+            throw interrupted;
+        }
+
+        if (entry.failure != null) {
+            throw entry.failure;
+        }
+
+        return entry.result;
     }
 
     /**
@@ -40,7 +70,16 @@ public final class CallQueue {
      * @return how many tasks were run
      */
     public int drain(int maxTasks) {
-        throw new UnsupportedOperationException("not implemented");
+        int ran = 0;
+        while (ran < maxTasks) {
+            Entry entry = pending.poll();
+            if (entry == null) {
+                break;
+            }
+            entry.run();
+            ran++;
+        }
+        return ran;
     }
 
     /**
@@ -49,12 +88,47 @@ public final class CallQueue {
      * (server stopping, chunk unloaded, ...) waits forever.
      */
     public void shutdown() {
-        throw new UnsupportedOperationException("not implemented");
+        shutdown = true;
+        for (Entry entry = pending.poll(); entry != null; entry = pending.poll()) {
+            entry.fail(shutDown());
+        }
+    }
+
+    private static IllegalStateException shutDown() {
+        return new IllegalStateException("call queue shut down");
     }
 
     /** Work to be run on the server thread. */
     @FunctionalInterface
     public interface ServerTask {
         Object[] run();
+    }
+
+    /** One submission: the work, where its result lands, and the waiter's gate. */
+    private static final class Entry {
+
+        private final ServerTask task;
+        private final CountDownLatch done = new CountDownLatch(1);
+        private Object[] result;
+        private RuntimeException failure;
+
+        Entry(ServerTask task) {
+            this.task = task;
+        }
+
+        void run() {
+            try {
+                result = task.run();
+            } catch (RuntimeException thrown) {
+                failure = thrown;
+            } finally {
+                done.countDown();
+            }
+        }
+
+        void fail (RuntimeException cause) {
+            failure = cause;
+            done.countDown();
+        }
     }
 }
