@@ -24,14 +24,13 @@ public class ComponentException extends RuntimeException {
     }
 
     /**
-     * Builds the message in Lua's own idiom, minus the method name, which the
-     * dispatcher prefixes because it is the layer that knows it:
+     * The base envelope, without a method name:
      * {@code "bad argument #1 (string expected, got number)"}.
      *
      * @param index zero-based, as used by {@link Arguments}; rendered one-based
      */
     public static ComponentException badArgument(int index, String expected, Object actual) {
-        return badArgument(index, expected + " expected, got " + typeName(actual));
+        return badArgument(index, describe(expected, actual));
     }
 
     /**
@@ -43,7 +42,39 @@ public class ComponentException extends RuntimeException {
      * @param index zero-based, as used by {@link Arguments}; rendered one-based
      */
     public static ComponentException badArgument(int index, String reason) {
-        return new ComponentException("bad argument #" + (index + 1) + " (" + reason + ")");
+        return new ComponentException(envelope(index, "", reason));
+    }
+
+    /**
+     * Lua's own idiom, method name included:
+     * {@code "bad argument #1 to 'set' (string expected, got number)"}.
+     *
+     * <p>{@link Arguments} holds the name and is what calls this. The name is
+     * not information the player lacks - the traceback already gives the call
+     * site - it is conformance to a message shape every Lua programmer knows.
+     *
+     * @param index zero-based, as used by {@link Arguments}; rendered one-based
+     */
+    public static ComponentException badArgument(
+            String methodName,
+            int index,
+            String expected,
+            Object actual)
+    {
+        return badArgument(methodName, index, describe(expected, actual));
+    }
+
+    /** @param index zero-based, as used by {@link Arguments}; rendered one-based */
+    public static ComponentException badArgument(String methodName, int index, String reason) {
+        return new ComponentException(envelope(index, " to '" + methodName + "'", reason));
+    }
+
+    private static String envelope(int index, String calledAs, String reason) {
+        return "bad argument #" + (index + 1) + calledAs + " (" + reason + ")";
+    }
+
+    private static String describe(String expected, Object actual) {
+        return expected + " expected, got " + typeName(actual);
     }
 
     /**

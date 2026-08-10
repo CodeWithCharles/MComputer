@@ -30,9 +30,11 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 public final class Arguments {
 
     private final Object[] values;
+    private final String methodName;
 
-    public Arguments(Object[] values) {
+    public Arguments(Object[] values, String methodName) {
         this.values = Objects.requireNonNull(values, "values");
+        this.methodName = Objects.requireNonNull(methodName, "methodName");
     }
 
     private Object at(int index) {
@@ -52,7 +54,7 @@ public final class Arguments {
         if (type.isInstance(value)) {
             return type.cast(value);
         }
-        throw ComponentException.badArgument(index, luaName, value);
+        throw ComponentException.badArgument(methodName, index, luaName, value);
     }
 
     /** How many arguments the caller passed. */
@@ -85,7 +87,7 @@ public final class Arguments {
         double value = checkDouble(index);
         if (!Double.isFinite(value) || value != Math.rint(value)
                 || value < Integer.MIN_VALUE || value > Integer.MAX_VALUE) {
-            throw ComponentException.badArgument(index,
+            throw ComponentException.badArgument(methodName, index,
                     "number has no integer representation");
         }
         return (int) value;
@@ -109,7 +111,7 @@ public final class Arguments {
                     .decode(ByteBuffer.wrap(bytes))
                     .toString();
         } catch (CharacterCodingException malformed) {
-            throw ComponentException.badArgument(index, "invalid UTF-8 string");
+            throw ComponentException.badArgument(methodName, index, "invalid UTF-8 string");
         }
     }
 

@@ -8,7 +8,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 public class ArgumentsTest {
 
     private static Arguments of(Object... values) {
-        return new Arguments(values);
+        return new Arguments(values, "set");
     }
 
     @Test
@@ -52,7 +52,7 @@ public class ArgumentsTest {
 
     @Test
     void aNullArrayIsAProgrammingError() {
-        assertThrows(NullPointerException.class, () -> new Arguments(null));
+        assertThrows(NullPointerException.class, () -> new Arguments(null, "set"));
     }
 
     // --- checkBoolean -----------------------------------------------------
@@ -67,14 +67,14 @@ public class ArgumentsTest {
     void checkBooleanRejectsAnotherType() {
         ComponentException thrown = assertThrows(ComponentException.class,
                 () -> of(1.0).checkBoolean(0));
-        assertEquals("bad argument #1 (boolean expected, got number)", thrown.getMessage());
+        assertEquals("bad argument #1 to 'set' (boolean expected, got number)", thrown.getMessage());
     }
 
     @Test
     void checkBooleanRejectsAMissingArgument() {
         ComponentException thrown = assertThrows(ComponentException.class,
                 () -> of().checkBoolean(0));
-        assertEquals("bad argument #1 (boolean expected, got nil)", thrown.getMessage());
+        assertEquals("bad argument #1 to 'set' (boolean expected, got nil)", thrown.getMessage());
     }
 
     // --- checkDouble ------------------------------------------------------
@@ -88,7 +88,7 @@ public class ArgumentsTest {
     void checkDoubleRejectsANumericString() {
         ComponentException thrown = assertThrows(ComponentException.class,
                 () -> of(new byte[] { 0x34 }).checkDouble(0));
-        assertEquals("bad argument #1 (number expected, got string)", thrown.getMessage());
+        assertEquals("bad argument #1 to 'set' (number expected, got string)", thrown.getMessage());
     }
 
     // --- checkInt ---------------------------------------------------------
@@ -110,7 +110,7 @@ public class ArgumentsTest {
     void checkIntRejectsAFraction() {
         ComponentException thrown = assertThrows(ComponentException.class,
                 () -> of(1.5).checkInt(0));
-        assertEquals("bad argument #1 (number has no integer representation)",
+        assertEquals("bad argument #1 to 'set' (number has no integer representation)",
                 thrown.getMessage());
     }
 
@@ -133,7 +133,7 @@ public class ArgumentsTest {
     void checkIntStillReportsATypeErrorAsATypeError() {
         ComponentException thrown = assertThrows(ComponentException.class,
                 () -> of(Boolean.TRUE).checkInt(0));
-        assertEquals("bad argument #1 (number expected, got boolean)", thrown.getMessage());
+        assertEquals("bad argument #1 to 'set' (number expected, got boolean)", thrown.getMessage());
     }
 
     // --- checkBytes -------------------------------------------------------
@@ -148,7 +148,7 @@ public class ArgumentsTest {
     void checkBytesRejectsANumber() {
         ComponentException thrown = assertThrows(ComponentException.class,
                 () -> of(1.0).checkBytes(0));
-        assertEquals("bad argument #1 (string expected, got number)", thrown.getMessage());
+        assertEquals("bad argument #1 to 'set' (string expected, got number)", thrown.getMessage());
     }
 
     // --- checkText --------------------------------------------------------
@@ -162,14 +162,14 @@ public class ArgumentsTest {
     void checkTextRejectsInvalidUtf8() {
         ComponentException thrown = assertThrows(ComponentException.class,
                 () -> of(new byte[] { (byte) 0xFF }).checkText(0));
-        assertEquals("bad argument #1 (invalid UTF-8 string)", thrown.getMessage());
+        assertEquals("bad argument #1 to 'set' (invalid UTF-8 string)", thrown.getMessage());
     }
 
     @Test
     void checkTextRejectsANumber() {
         ComponentException thrown = assertThrows(ComponentException.class,
                 () -> of(1.0).checkText(0));
-        assertEquals("bad argument #1 (string expected, got number)", thrown.getMessage());
+        assertEquals("bad argument #1 to 'set' (string expected, got number)", thrown.getMessage());
     }
 
     // --- optional ---------------------------------------------------------
@@ -211,14 +211,14 @@ public class ArgumentsTest {
     void aPresentValueOfTheWrongTypeStillFails() {
         ComponentException thrown = assertThrows(ComponentException.class,
                 () -> of(1.0).optText(0, "none"));
-        assertEquals("bad argument #1 (string expected, got number)", thrown.getMessage());
+        assertEquals("bad argument #1 to 'set' (string expected, got number)", thrown.getMessage());
     }
 
     @Test
     void optIntStillRejectsAFraction() {
         ComponentException thrown = assertThrows(ComponentException.class,
                 () -> of(1.5).optInt(0, 7));
-        assertEquals("bad argument #1 (number has no integer representation)",
+        assertEquals("bad argument #1 to 'set' (number has no integer representation)",
                 thrown.getMessage());
     }
 

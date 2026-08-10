@@ -50,22 +50,22 @@ public class ComponentApiTest {
 
         Object[] returned = api.method("set")
                 .orElseThrow()
-                .invoke(new Arguments(new Object[] { "red".getBytes(UTF_8), 2.0 }));;
+                .invoke(new Arguments(new Object[] { "red".getBytes(UTF_8), 2.0 }, "set"));
 
         assertArrayEquals(new Object[] { "red", 2.0 }, returned);
     }
 
     @Test
-    void aTypeErrorCarriesNoMethodName() {
+    void aTypeErrorCarriesTheMethodName() {
         ComponentApi api = ComponentApi.builder("gpu")
                 .method("set", args -> new Object[] { args.checkText(0) })
                 .build();
         ComponentMethod set = api.method("set").orElseThrow();
-        Arguments wrong = new Arguments(new Object[] { 2.0 });
+        Arguments wrong = new Arguments(new Object[] { 2.0 }, "set");
 
         ComponentException thrown = assertThrows(ComponentException.class, () -> set.invoke(wrong));
 
-        assertEquals("bad argument #1 (string expected, got number)", thrown.getMessage());
+        assertEquals("bad argument #1 to 'set' (string expected, got number)", thrown.getMessage());
     }
 
     @Test
