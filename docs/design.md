@@ -133,6 +133,39 @@ that possible and still chooses to reboot computers on world load. We reboot
 too. A well-written Lua program saves its state to disk and reloads it at boot -
 the constraint becomes a gameplay mechanic.
 
+## Sandboxing
+
+A player's script is untrusted code running on a server. The globals it can see
+are therefore **composed by hand, library by library**. LuaJ's
+`JsePlatform.standardGlobals()` is never called: it installs `luajava`, LuaJ's
+Java reflection library, and one line of Lua would then be arbitrary code
+execution on the server.
+
+The parts of this that are not guessable from the API are worth stating, because
+every one of them was measured rather than assumed:
+
+- **`BaseLib` installs `dofile` and `loadfile`, and appoints itself resource
+  finder** - inside a Fabric mod that reads every resource of every loaded jar.
+  Both globals are removed and the finder is nulled.
+- **`DebugLib` has to be loaded** for the instruction hook to exist, and the
+  `debug` table has to be removed afterwards, or a script calls
+  `debug.sethook(nil)` and disarms the guard.
+- **`pcall` catches `LuaError` and `java.lang.Exception`.** A hook raising either
+  is swallowed by `while true do pcall(function() while true do end end) end`,
+  which defeats the budget entirely while it appears to be installed. The hook
+  throws a Java `Error`, which `pcall` cannot catch.
+- **Chunks are loaded in text mode only, with no undumper installed**, so
+  precompiled Lua bytecode cannot be handed to the VM.
+- **Every LuaJ library except `BaseLib` requires a `package.loaded` table** to
+  install at all, so a whitelist that excludes `PackageLib` has to provide one
+  and then drop it.
+
+Where a second lock is cheap, there are two. Text-only mode and no undumper.
+Removed globals and a nulled finder. Each is one hole with two independent doors.
+
+What a script can name is asserted in Lua, not in Java: what matters is not what
+the globals table holds, but what a player can reach.
+
 ## Technical stack
 
 | Item | Choice                                                                                                                                                             |
@@ -143,6 +176,7 @@ the constraint becomes a gameplay mechanic.
 | Loom plugin | `net.fabricmc.fabric-loom` - since 26.1 Minecraft ships unobfuscated, so **no remapping**. The older `fabric-loom-remap` plugin only applies to 1.21.11 and below. |
 | Multi-version | Stonecutter 0.9.7, starting with a single target (26.2) so the plumbing exists without the upfront cost                                                            |
 | Java | JDK 25 (required by Fabric from 26.1 onwards)                                                                                                                      |
+| Lua VM | LuaJ 3.0.1, embedded jar-in-jar. Dormant since 2015, which is fine: with VM state persistence off the table, nothing more is needed from it                       |
 | Fabric Loader | 0.19.3                                                                                                                                                             |
 | Fabric API | 0.152.2+26.2                                                                                                                                                       |
 | IDE | IntelliJ IDEA 2025.3+ (required for mixin annotation processing)                                                                                                   |
@@ -162,6 +196,10 @@ the constraint becomes a gameplay mechanic.
 
 ## Next steps
 
-- Component addressing and the Java/Lua value boundary
-- First basic computer block (milestone 1)
-- LuaJ integration: sandboxing and instruction budget
+- The screen and a basic terminal (milestone 3). A script's output and its
+  errors already travel on the same injected sink, so this is a change of sink
+  rather than a change to the VM.
+- First question to settle there: whether the screen is a face of the computer
+  block or a separate linked block.
+- Then components as real items, which is where component addressing stops being
+  a design note and meets Minecraft's data components.
