@@ -14,8 +14,12 @@ import java.util.Arrays;
  * <p>Cells carry no colour. Nothing can set one until a graphics component
  * exists.
  *
- * <p>Not synchronised. It is written on the server thread, through the same
- * hand-off every other side effect of a script takes.
+ * <p>Not synchronised, and it is the adapter's job to keep that true. A script's
+ * output does <b>not</b> reach this class on the server thread: {@code print}
+ * calls the sink from the Lua thread, and a compile failure calls it from the
+ * server thread inside {@code Machine.start()}. The adapter therefore parks
+ * lines in a thread-safe queue and drains them here on the tick. Every method
+ * below assumes a single thread and nothing enforces it.
  *
  * <p>Invariant: every row at or below the write position is blank. It holds by
  * construction, by {@link #clear()} and by scrolling, and it is what lets
