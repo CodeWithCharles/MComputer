@@ -1,80 +1,133 @@
 package io.github.codewithcharles.mcomputer.core.machine;
 
+import io.github.codewithcharles.mcomputer.core.vm.Vm;
+import io.github.codewithcharles.mcomputer.core.vm.VmException;
+
+import java.util.Objects;
+import java.util.function.Supplier;
+
 /**
  * One computer, seen from the side that does not know Minecraft exists.
  *
- * <p>Its {@link CallQueue} <b>is</b> its state: a machine is on exactly when it
- * has one. There is no separate flag, so "running with no queue" is not a state
- * this class can be in.
+ * <p>Its {@code Run} <b>is</b> its state: a machine is on exactly when it has
+ * one. There is no flag beside it, and the queue and the Lua thread cannot
+ * disagree about whether the machine is on, because neither can be held without
+ * the other.
  *
- * <p><b>A queue lives for one run, not for the machine.</b> {@code shutdown()}
- * is terminal, so {@code stop()} discards the queue and {@code start()} builds
- * a fresh one. This is the same statement as "a machine reboots, it does not
- * resume", made where the compiler can see it.
+ * <p><b>A run is what its name says - one run.</b> {@code CallQueue.shutdown()}
+ * is terminal and a VM does not resume, so {@code stop()} discards the whole run
+ * and {@code start()} builds another. This is "a machine reboots, it does not
+ * resume", written where the compiler can see it.
  *
- * <p>Not thread-safe: every method here is called from the server thread.
+ * <p><b>{@code start()} spawns a thread; compilation does not run on it.</b> The
+ * script is compiled here, on the calling thread, so a boot script that does not
+ * compile stops the machine from ever being on instead of killing it a moment
+ * later from a thread the caller cannot see.
+ *
+ * <p>Not thread-safe, and it does not need to be: {@code start}, {@code stop} and
+ * {@code tick} are called from the server thread, and the only thing the Lua
+ * thread ever touches is the {@link CallQueue}, which exists for exactly that.
  */
 public final class Machine {
 
     private final int maxTasksPerTick;
+    private final Supplier<Vm> vms;
+    private final byte[] bootChunk;
+    private final String bootChunkName;
 
-    private CallQueue callQueue;
+    /**
+     * Everything that belongs to one run and dies with it.
+     *
+     * <p>The 2026-08-10 rule is unchanged, only widened: a machine is on exactly
+     * when it has a run. Three separate nullable fields could disagree about
+     * whether the machine is on; one cannot. The VM is deliberately not in here
+     * - the thread body is its only reader, and it captures it.
+     */
+    private record Run(CallQueue queue, Thread luaThread) {
+    }
+
+    private Run run;
 
     /**
      * @param maxTasksPerTick upper bound handed to {@link CallQueue#drain(int)}
      *                        on each tick
+     * @param vms             produces a fresh VM per <b>run</b>, for the same
+     *                        reason the queue is per run: nothing resumes, a
+     *                        machine reboots
+     * @param bootChunk       the script this computer runs, as bytes
+     * @param bootChunkName   what its error messages call it
      */
-    public Machine(int maxTasksPerTick) {
+    public Machine(
+            int maxTasksPerTick,
+            Supplier<Vm> vms,
+            byte[] bootChunk,
+            String bootChunkName)
+    {
         this.maxTasksPerTick = maxTasksPerTick;
+        this.vms = Objects.requireNonNull(vms, "vms");
+        this.bootChunk = Objects.requireNonNull(bootChunk, "bootChunk");
+        this.bootChunkName = Objects.requireNonNull(bootChunkName, "bootChunkName");
     }
 
     public boolean isRunning() {
-        return callQueue != null;
+        return run != null;
     }
 
-    /**
-     * The queue of the current run, for the Lua thread to submit through.
-     *
-     * <p>A queue belongs to one run: the instance handed out here is shut down
-     * and dropped by {@link #stop()}, and {@link #start()} builds another. A
-     * caller must not hold one across a restart.
-     *
-     * @throws IllegalStateException if the machine is off - asking a stopped
-     *         machine for its queue is a caller bug, not a state to branch on
-     */
     public CallQueue callQueue() {
-        if (callQueue == null) {
+        if (run == null) {
             throw new IllegalStateException("machine is off");
         }
-        return callQueue;
+        return run.queue();
     }
 
-    /** Turns the machine on, giving it a fresh queue. */
     public void start() {
-        if (callQueue != null) {
+        if (run != null) {
             return;
         }
-        callQueue = new CallQueue();
+        Vm vm = vms.get();
+        vm.load(bootChunk, bootChunkName);
+
+        // Daemon: a Lua thread that outlives its machine must never be the
+        // reason the JVM stays up.
+        Thread luaThread = new Thread(() -> {
+            try {
+                vm.run();
+            } catch (VmException e) {
+                // Already reported to the script's own output channel, which is
+                // where the player will read it. Rethrowing would reach nothing
+                // but the JVM's default handler. Note the exact type: a bug of
+                // OURS still escapes and is still loud - the same split as
+                // ComponentException against everything else, one layer up.
+            }
+        }, "mcomputer-lua");
+        luaThread.setDaemon(true);
+        run = new Run(new CallQueue(), luaThread);
+        luaThread.start();
     }
 
-    /**
-     * Turns the machine off: releases everything waiting on the queue, then
-     * drops it. Called when the block is broken, the chunk unloads or the
-     * server stops, as well as by the player.
-     */
     public void stop() {
-        if (callQueue == null) {
+        if (run == null) {
             return;
         }
-        callQueue.shutdown();
-        callQueue = null;
+        // Order matters: the shutdown releases a thread parked in submit() with
+        // its error, the interrupt reaches one that is spinning. Deliberately no
+        // join - this runs on the server thread, and waiting for a script here
+        // would put an arbitrary script's timing inside the tick.
+        run.queue().shutdown();
+        run.luaThread().interrupt();
+        run = null;
     }
 
-    /** Called once per server tick, whatever state the machine is in. */
     public void tick() {
-        if (callQueue == null) {
+        if (run == null) {
             return;
         }
-        callQueue.drain(maxTasksPerTick);
+        if (!run.luaThread().isAlive()) {
+            // The run is over, well or badly. stop() is safe on a dead thread:
+            // the shutdown releases nobody and the interrupt reaches no one.
+            stop();
+            return;
+        }
+        run.queue().drain(maxTasksPerTick);
     }
 }

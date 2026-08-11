@@ -58,15 +58,24 @@ code copied):
   reboots on load rather than resuming. The filesystem persists; execution does
   not. See "Execution model" below.
 
-### Suggested development milestones
+### Development milestones
 
-1. A computer block that boots (on/off, static boot screen, no components)
-2. Embedded Lua VM - run a hardcoded script, output to the server log
-3. Screen and basic terminal - in-game text rendering, writable from Lua
+1. **Done.** A computer block that boots: on/off, right-click toggle, state
+   persisted in NBT and replayed on load, a `lit` blockstate so the state is
+   visible. The static boot screen was moved to milestone 3, where the text
+   rendering it needs already lives.
+2. **Done.** Embedded Lua VM: a hardcoded script runs on its own thread, its
+   output reaches the server log, and the sandbox holds.
+3. **Next.** Screen and basic terminal - in-game text rendering, writable from
+   Lua.
 4. Real modular components - computer inventory, CPU/RAM affecting the VM
 5. Persistent filesystem - save/load, minimal Lua shell
 
 *Reaching milestone 3 already yields something playable and satisfying.*
+
+The whole of the core, including the VM, is covered by tests that never launch
+Minecraft. That was set as a binary acceptance criterion on day one, and it is
+what makes iteration on the Lua side survivable.
 
 ## Filesystem persistence
 
@@ -99,10 +108,24 @@ wakes the Lua thread with the result. This is OpenComputers' model.
 
 - The Lua thread never touches the world directly. Everything goes through the
   queue.
-- An instruction budget, enforced via debug hook, kills infinite loops and forces
-  breathing points. CPU tier maps to instructions per slice.
-- A Lua thread that does not yield within a few seconds is killed.
-- Cost: one thread per *running* computer. Fine at this scale.
+- **The machine owns the thread; the VM does not.** The VM is synchronous and
+  knows nothing about threads, which keeps the sandbox, the budget and `print`
+  testable as ordinary unit tests.
+- **Compilation happens on the server thread**, before the thread is started, so
+  a script that does not compile stops the computer from ever turning on rather
+  than killing it a moment later from a thread nobody can see.
+- An instruction budget, enforced via a debug hook armed every thousand
+  instructions, kills infinite loops. CPU tier will map to the size of that
+  budget.
+- The hook is also the only place a stop request can be noticed, because a Lua
+  loop ignores thread interruption entirely. Switching a computer off shuts its
+  queue down, then interrupts.
+- A run that ends, well or badly, turns the computer off on the next tick.
+- Cost: one thread per *running* computer, daemon so it can never keep the JVM
+  alive. Fine at this scale.
+
+A wall-clock timeout is still on the list and not built. The instruction budget
+covers a runaway loop; it does not cover a component method that blocks.
 
 **Consequence for persistence:** resuming execution mid-script would require
 serialising the VM. CC: Tweaked maintains a whole LuaJ fork (Cobalt) to make

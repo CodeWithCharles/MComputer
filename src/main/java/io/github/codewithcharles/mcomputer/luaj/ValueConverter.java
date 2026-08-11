@@ -100,13 +100,6 @@ public final class ValueConverter {
     // Both are threaded through the recursion rather than held as fields, so
     // the converter stays stateless and one call cannot poison the next.
 
-
-    private static byte[] bytesOf(LuaString string) {
-        byte[] out = new byte[string.length()];
-        string.copyInto(0, out, 0, out.length);
-        return out;
-    }
-
     private Map<Object, Object> tableToJava(LuaTable table, int depth, Budget budget) {
         if (depth <= 0) {
             throw new ComponentException("table too deep (possible cycle)");
@@ -190,7 +183,7 @@ public final class ValueConverter {
             case LuaValue.TNIL      -> null;
             case LuaValue.TBOOLEAN  -> value.toboolean();
             case LuaValue.TNUMBER   -> value.todouble();
-            case LuaValue.TSTRING   -> bytesOf(value.checkstring());
+            case LuaValue.TSTRING   -> LuaStrings.bytesOf(value.checkstring());
             case LuaValue.TTABLE    -> tableToJava(value.checktable(), depth, budget);
             default -> throw new ComponentException(
                     "unsupported value (" + value.typename() + ")");

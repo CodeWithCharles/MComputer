@@ -27,7 +27,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
  * Split across two, the two forms drift and {@code list()} starts handing out
  * addresses {@code invoke()} refuses.
  */
-public class ComponentBus {
+public final class ComponentBus {
 
     private final ComponentRegistry registry;
 
