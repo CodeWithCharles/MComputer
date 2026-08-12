@@ -105,6 +105,14 @@ public class ComputerBlockEntity extends BlockEntity {
         }
     }
 
+    /**
+     * The grid the terminal draws. The client's copy is kept current by this
+     * block entity's own update packet; nothing outside this class writes to it.
+     */
+    public ScreenBuffer screen() {
+        return screen;
+    }
+
     @Override
     public void setRemoved() {
         super.setRemoved();

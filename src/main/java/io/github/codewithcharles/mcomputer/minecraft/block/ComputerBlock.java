@@ -3,6 +3,7 @@ package io.github.codewithcharles.mcomputer.minecraft.block;
 import com.mojang.serialization.MapCodec;
 import io.github.codewithcharles.mcomputer.minecraft.block.entity.ComputerBlockEntity;
 import io.github.codewithcharles.mcomputer.minecraft.block.entity.MComputerBlockEntities;
+import io.github.codewithcharles.mcomputer.minecraft.client.ComputerScreen;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.player.Player;
@@ -52,6 +53,22 @@ public final class ComputerBlock extends BaseEntityBlock {
             Player player,
             BlockHitResult hit)
     {
+        // Shift + right-click opens the terminal, plain right-click keeps the
+        // toggle. Both assignments are DELIBERATELY PROVISIONAL - decisions.md
+        // promises the plain right-click to the components GUI at milestone 4.
+        if (player.isSecondaryUseActive()) {
+            if (level.isClientSide()
+                && level.getBlockEntity(pos) instanceof ComputerBlockEntity computer) {
+                // The only reference in this project from common code to a
+                // client-only class. It holds because the JVM resolves a call
+                // site on first execution and this branch never runs on a
+                // dedicated server - a guard on CLASS LOADING rather than on
+                // behaviour, which is subtler than every other guard here and
+                // is only truly provable by running a dedicated server.
+                ComputerScreen.open(computer);
+            }
+            return InteractionResult.SUCCESS;
+        }
         if (level.isClientSide()) {
             return InteractionResult.SUCCESS;
         }
