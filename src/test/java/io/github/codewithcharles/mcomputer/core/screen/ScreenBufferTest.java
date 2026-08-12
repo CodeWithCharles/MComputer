@@ -192,6 +192,72 @@ final class ScreenBufferTest {
     }
 
     @Test
+    void aSnapshotIsAnIndependentCopy() {
+        ScreenBuffer buffer = new ScreenBuffer(5, 3);
+        buffer.writeLine(bytes("abc"));
+
+        byte[] snapshot = buffer.snapshot();
+        snapshot[0] = (byte) 'z';
+
+        assertEquals("abc  ", rowText(buffer, 0));
+    }
+
+    @Test
+    void aBufferRestoredFromASnapshotShowsTheSameThing() {
+        ScreenBuffer source = new ScreenBuffer(5, 3);
+        source.writeLine(bytes("abc"));
+        source.writeLine(bytes("de"));
+
+        ScreenBuffer replica = new ScreenBuffer(5, 3);
+        replica.restore(source.snapshot(), source.writePosition());
+
+        assertEquals("abc  ", rowText(replica, 0));
+        assertEquals("de   ", rowText(replica, 1));
+        assertEquals("     ", rowText(replica, 2));
+    }
+
+    @Test
+    void restoringCarriesTheWritePosition() {
+        ScreenBuffer source = new ScreenBuffer(5, 3);
+        source.writeLine(bytes("abc"));
+        source.writeLine(bytes("de"));
+
+        ScreenBuffer replica = new ScreenBuffer(5, 3);
+        replica.restore(source.snapshot(), source.writePosition());
+        replica.writeLine(bytes("z"));
+
+        assertEquals("z    ", rowText(replica, 2));
+    }
+
+    @Test
+    void restoringAWritePositionEqualToTheHeightIsAccepted() {
+        ScreenBuffer buffer = new ScreenBuffer(5, 3);
+
+        buffer.restore(new byte[15], 3);
+        buffer.writeLine(bytes("z"));
+
+        assertEquals("z    ", rowText(buffer, 2));
+    }
+
+    @Test
+    void restoringTheWrongNumberOfCellsIsRejected() {
+        ScreenBuffer buffer = new ScreenBuffer(5, 3);
+
+        assertThrows(IllegalArgumentException.class,
+                () -> buffer.restore(new byte[14], 0));
+    }
+
+    @Test
+    void restoringAWritePositionOutsideTheGridIsRejected() {
+        ScreenBuffer buffer = new ScreenBuffer(5, 3);
+
+        assertThrows(IllegalArgumentException.class,
+                () -> buffer.restore(new byte[15], -1));
+        assertThrows(IllegalArgumentException.class,
+                () -> buffer.restore(new byte[15], 4));
+    }
+
+    @Test
     void aNewlineEndsTheCurrentLine() {
         ScreenBuffer buffer = new ScreenBuffer(5, 3);
 

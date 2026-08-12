@@ -1,5 +1,6 @@
 package io.github.codewithcharles.mcomputer.minecraft.block.entity;
 
+import com.mojang.serialization.Codec;
 import io.github.codewithcharles.mcomputer.MComputer;
 import io.github.codewithcharles.mcomputer.core.machine.Machine;
 import io.github.codewithcharles.mcomputer.core.screen.ScreenBuffer;
@@ -8,6 +9,10 @@ import io.github.codewithcharles.mcomputer.core.vm.VmException;
 import io.github.codewithcharles.mcomputer.luaj.LuaJVm;
 import io.github.codewithcharles.mcomputer.minecraft.block.ComputerBlock;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.HolderLookup;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
@@ -95,7 +100,9 @@ public class ComputerBlockEntity extends BlockEntity {
         // tick() notices the Lua thread is dead and stops the machine, the
         // script's last prints and its failure line are still in the queue.
         // They would be lost, and the failure line is the one the player needs.
-        screenOutput.drain();
+        if (screenOutput.drain() > 0) {
+            sendScreen();
+        }
     }
 
     @Override
@@ -113,11 +120,43 @@ public class ComputerBlockEntity extends BlockEntity {
     @Override
     protected void loadAdditional(ValueInput input) {
         super.loadAdditional(input);
+
+        // Applied on both sides on purpose: on the client because that is what
+        // the sync is for, and on the server where the key is simply absent and
+        // the Optional is empty. The divergence is carried by the Optional, not
+        // by a branch of our own.
+        input.read("screen", Codec.BYTE_BUFFER).ifPresent(incoming -> {
+            byte[] cells = new byte[incoming.remaining()];
+            incoming.get(cells);
+            screen.restore(cells, input.getIntOr("screen_row", 0));
+        });
+
+        Level level = getLevel();
+        if (level != null && level.isClientSide()) {
+            return;
+        }
+
         if (input.getBooleanOr("running", false)) {
             startQuietly();
         } else {
             machine.stop();
         }
+    }
+
+    @Override
+    public CompoundTag getUpdateTag(HolderLookup.Provider registries) {
+        CompoundTag tag = saveCustomOnly(registries);
+        // Written on the CompoundTag rather than through saveAdditional, and
+        // that is the whole trick: the disk path never sees these two keys, so
+        // "the buffer does not survive a world reload" costs no code at all.
+        tag.putByteArray("screen", screen.snapshot());
+        tag.putInt("screen_row", screen.writePosition());
+        return tag;
+    }
+
+    @Override
+    public ClientboundBlockEntityDataPacket getUpdatePacket() {
+        return ClientboundBlockEntityDataPacket.create(this);
     }
 
     /**
@@ -138,10 +177,44 @@ public class ComputerBlockEntity extends BlockEntity {
     }
 
     /**
+     * Pushes the screen to every client tracking this block.
+     *
+     * <p>No setChanged() here, unlike syncState() and unlike vanilla's
+     * markUpdated(): the screen is synchronised and <b>not saved</b>, so it
+     * wants the network half and not the disk half. Marking the chunk dirty for
+     * a grid that never reaches the disk would be paid on every printed line.
+     *
+     * <p>The if at the call site is not an optimisation either. Without it this
+     * would run twenty times a second for every computer in the world, over a
+     * grid nobody touched - the same if syncState() had to learn at milestone 2,
+     * for the same reason.
+     */
+    private void sendScreen() {
+        Level level = getLevel();
+        if (level != null) {
+            level.sendBlockUpdated(getBlockPos(), getBlockState(), getBlockState(),
+                    Block.UPDATE_ALL);
+        }
+    }
+
+    /**
      * A boot script that does not compile leaves the computer off. The failure
-     * has already been written to the machine's output channel - the server log
-     * today, the screen at milestone 3 - so there is nothing to add here, and
+     * has already been written to the machine's output channel on the machine's
+     * output channel, which is the screen so there is nothing to add here, and
      * letting it escape would fail a world load.
+     *
+     * A boot starts on a clean screen; an extinction does not clear it, so the
+     * error that killed a script stays readable until the next boot.
+     *
+     * <p>The only write to the buffer outside the drain, and it is legal because
+     * this runs on the server thread - from toggle(), and from loadAdditional(),
+     * measured Server-thread-only at milestone 1. Anything reaching the buffer
+     * from any other thread goes through screenOutput.
+     *
+     * <p>A boot script that does not compile leaves the computer off. The failure
+     * has already been written to the machine's output channel, which is now the
+     * screen, so there is nothing to add here - and letting it escape would fail
+     * a world load.
      */
     private void startQuietly() {
         screen.clear();

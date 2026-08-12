@@ -142,4 +142,46 @@ public final class ScreenBuffer {
         Arrays.fill(cells, BLANK);
         nextRow = 0;
     }
+
+    /**
+     * @return a copy of the array itself
+     */
+    public byte[] snapshot() {
+        return cells.clone();
+    }
+
+    /**
+     * The row the next line lands on. It ranges over 0 to {@link #height()}
+     * <b>inclusive</b>: {@code height} is the legitimate state "the next write
+     * scrolls first", which lazy scrolling makes ordinary rather than
+     * exceptional.
+     */
+    public int writePosition() {
+        return nextRow;
+    }
+
+    /**
+     * Replaces every cell and the write position at once.
+     *
+     * <p>The position is not optional and does not default. Restoring a full
+     * grid while leaving the position at zero yields a buffer whose rows below
+     * that position are not blank - this class's one invariant, broken by
+     * construction, on an object nothing else would ever flag as invalid.
+     *
+     * @param cells         exactly {@code width * height} bytes, row-major
+     * @param writePosition where the next line lands, 0 to {@link #height()}
+     * @throws IllegalArgumentException if either is out of shape
+     */
+    public void restore(byte[] cells, int writePosition) {
+        if (cells.length != this.cells.length) {
+            throw new IllegalArgumentException(
+                    "expected " + this.cells.length + " cells, got " + cells.length);
+        }
+        if (writePosition < 0 || writePosition > height) {
+            throw new IllegalArgumentException(
+                    "write position " + writePosition + " is outside 0.." + height);
+        }
+        System.arraycopy(cells, 0, this.cells, 0, cells.length);
+        this.nextRow = writePosition;
+    }
 }
