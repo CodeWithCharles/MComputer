@@ -190,4 +190,61 @@ final class ScreenBufferTest {
 
         assertEquals("z    ", rowText(buffer, 0));
     }
+
+    @Test
+    void aNewlineEndsTheCurrentLine() {
+        ScreenBuffer buffer = new ScreenBuffer(5, 3);
+
+        buffer.writeLine(bytes("ab\ncd"));
+
+        assertEquals("ab   ", rowText(buffer, 0));
+        assertEquals("cd   ", rowText(buffer, 1));
+        assertEquals("     ", rowText(buffer, 2));
+    }
+
+    @Test
+    void aTrailingNewlineLeavesABlankLine() {
+        ScreenBuffer buffer = new ScreenBuffer(5, 3);
+
+        buffer.writeLine(bytes("ab\n"));
+        buffer.writeLine(bytes("z"));
+
+        assertEquals("ab   ", rowText(buffer, 0));
+        assertEquals("     ", rowText(buffer, 1));
+        assertEquals("z    ", rowText(buffer, 2));
+    }
+
+    @Test
+    void aSegmentLongerThanTheWidthStillWraps() {
+        ScreenBuffer buffer = new ScreenBuffer(5, 3);
+
+        buffer.writeLine(bytes("abcdefg\nz"));
+
+        assertEquals("abcde", rowText(buffer, 0));
+        assertEquals("fg   ", rowText(buffer, 1));
+        assertEquals("z    ", rowText(buffer, 2));
+    }
+
+    @Test
+    void aNewlineAtTheBottomOfTheGridScrolls() {
+        ScreenBuffer buffer = new ScreenBuffer(5, 3);
+
+        buffer.writeLine(bytes("aaa"));
+        buffer.writeLine(bytes("bbb\nccc\nddd"));
+
+        assertEquals("bbb  ", rowText(buffer, 0));
+        assertEquals("ccc  ", rowText(buffer, 1));
+        assertEquals("ddd  ", rowText(buffer, 2));
+    }
+
+    @Test
+    void onlyNewlineEndsALine() {
+        ScreenBuffer buffer = new ScreenBuffer(5, 3);
+
+        buffer.writeLine(bytes("a\tb\rc"));
+
+        assertEquals((byte) '\t', buffer.byteAt(1, 0));
+        assertEquals((byte) '\r', buffer.byteAt(3, 0));
+        assertEquals("     ", rowText(buffer, 1));
+    }
 }

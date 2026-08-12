@@ -11,6 +11,15 @@ import java.util.Arrays;
  * refuse an argument, because a script printing a stray byte must not die.
  * Mapping a byte to a glyph belongs to the renderer, at the far end.
  *
+ * <p>Exactly one byte is <b>read</b> rather than stored: {@code '\n'} ends a
+ * line. That is not a decoding rule sneaking back in - ASCII, Latin-1, CP437 and
+ * UTF-8 agree on it, so nothing here chooses an encoding - and this grid is a
+ * terminal's storage rather than a framebuffer: it already owns wrapping,
+ * advancing and scrolling, and a line break is of that family. <b>The list is
+ * closed at that one byte.</b> {@code '\t'}, {@code '\r'} and every other
+ * control byte are stored and will be drawn as glyphs. Widening it is a
+ * decision, not a fix.
+ *
  * <p>Cells carry no colour. Nothing can set one until a graphics component
  * exists.
  *
@@ -30,6 +39,8 @@ public final class ScreenBuffer {
 
     /** A blank cell. Also what {@link #clear()} writes. */
     public static final byte BLANK = (byte) ' ';
+    /** Ends a line. The only byte {@link #writeLine} reads instead of storing. */
+    private static final byte NEWLINE = (byte) '\n';
 
     private final int width;
     private final int height;
@@ -77,23 +88,47 @@ public final class ScreenBuffer {
     }
 
     /**
-     * Writes one line, then advances. A line longer than {@link #width()} wraps
-     * onto the following rows rather than being truncated. When the last row is
-     * full the whole grid scrolls up by one and the bottom row is blanked.
+     * Writes one line, then advances. A segment longer than {@link #width()}
+     * wraps onto the following rows rather than being truncated. When the last
+     * row is full the whole grid scrolls up by one and the bottom row is
+     * blanked.
      *
-     * @param line the raw bytes of the line, without a terminator
+     * <p>{@code '\n'} ends a line and is not stored. It <b>separates</b> rather
+     * than terminates, so {@code "ab\n"} leaves a blank row below {@code ab}:
+     * our own {@code print} already supplies a line end, and real Lua's
+     * {@code print("a\n")} does output a blank line. No other byte is read - the
+     * class javadoc carries the closed list.
+     *
+     * @param line the raw bytes of the line, with no terminator of its own
      */
     public void writeLine(byte[] line) {
+        int start = 0;
+        for (int i = 0; i < line.length; i++) {
+            if (line[i] == NEWLINE) {
+                writeSegment(line, start, i - start);
+                start = i + 1;
+            }
+        }
+        writeSegment(line, start, line.length - start);
+    }
+
+    /**
+     * Lays one segment out from the write position, wrapping and scrolling as
+     * needed. The overflow check is <b>inside</b> the loop and not in front of
+     * it: seven bytes at the bottom of a full five-wide grid scroll twice within
+     * one call, which is what aLineThatWrapsPastTheBottomScrollsMidWrite forces.
+     */
+    private void writeSegment(byte[] line, int offset, int length) {
         int written = 0;
         do {
             if (nextRow == height) {
                 scroll();
             }
-            int chunk = Math.min(width, line.length - written);
-            System.arraycopy(line, written, cells, nextRow * width, chunk);
+            int chunk = Math.min(width, length - written);
+            System.arraycopy(line, offset + written, cells, nextRow * width, chunk);
             written += chunk;
             nextRow++;
-        } while (written < line.length);
+        } while (written < length);
     }
 
     private void scroll() {

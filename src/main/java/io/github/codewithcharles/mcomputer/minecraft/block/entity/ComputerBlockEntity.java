@@ -2,6 +2,8 @@ package io.github.codewithcharles.mcomputer.minecraft.block.entity;
 
 import io.github.codewithcharles.mcomputer.MComputer;
 import io.github.codewithcharles.mcomputer.core.machine.Machine;
+import io.github.codewithcharles.mcomputer.core.screen.ScreenBuffer;
+import io.github.codewithcharles.mcomputer.core.screen.ScreenOutput;
 import io.github.codewithcharles.mcomputer.core.vm.VmException;
 import io.github.codewithcharles.mcomputer.luaj.LuaJVm;
 import io.github.codewithcharles.mcomputer.minecraft.block.ComputerBlock;
@@ -31,6 +33,29 @@ public class ComputerBlockEntity extends BlockEntity {
             print('the instruction budget is armed')
             """.getBytes(StandardCharsets.UTF_8);
 
+    private static final int SCREEN_WIDTH = 80;
+    private static final int SCREEN_HEIGHT = 25;
+
+    /**
+     * TODO: a guess, like MAX_TASKS_PER_TICK. It has two jobs - how many lines
+     * may wait for the next drain, and how much work one tick may do - so it
+     * must be at least SCREEN_HEIGHT, or a burst that fills the screen would
+     * lose lines the buffer had room for.
+     */
+    private static final int MAX_PENDING_LINES = 64;
+
+    /**
+     * The screen's storage. Server-side only, like the Machine: the client copy
+     * of this block entity holds one nobody ever writes into.
+     */
+    private final ScreenBuffer screen = new ScreenBuffer(SCREEN_WIDTH, SCREEN_HEIGHT);
+
+    /**
+     * What the VM writes into. It stands between the threads that produce output
+     * and the buffer, which assumes a single one.
+     */
+    private final ScreenOutput screenOutput = new ScreenOutput(screen, MAX_PENDING_LINES);
+
     /**
      * <b>Only the server's copy of this block entity ever uses it.</b> A block
      * entity is created on both sides - the client builds one for rendering -
@@ -43,10 +68,7 @@ public class ComputerBlockEntity extends BlockEntity {
             // Decoding here is legitimate and nowhere else: a log line IS text.
             // The VM keeps bytes right up to this point, which is why a script
             // printing binary corrupts the log entry and nothing else.
-            () -> new LuaJVm(
-                    line -> MComputer.LOGGER.info("[computer] {}",
-                            new String(line, StandardCharsets.UTF_8)),
-                    INSTRUCTION_BUDGET),
+            () -> new LuaJVm(screenOutput, INSTRUCTION_BUDGET),
             BOOT_SCRIPT,
             "boot.lua");
 
@@ -69,6 +91,11 @@ public class ComputerBlockEntity extends BlockEntity {
         if (machine.isRunning() != wasRunning) {
             syncState();
         }
+        // Unconditional, and isRunning() must never guard it: at the moment
+        // tick() notices the Lua thread is dead and stops the machine, the
+        // script's last prints and its failure line are still in the queue.
+        // They would be lost, and the failure line is the one the player needs.
+        screenOutput.drain();
     }
 
     @Override
@@ -117,6 +144,7 @@ public class ComputerBlockEntity extends BlockEntity {
      * letting it escape would fail a world load.
      */
     private void startQuietly() {
+        screen.clear();
         try {
             machine.start();
         } catch (VmException e) {
