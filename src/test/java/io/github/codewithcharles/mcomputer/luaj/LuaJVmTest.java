@@ -48,11 +48,33 @@ public class LuaJVmTest {
         _vm.run();
     }
 
+    /**
+     * Guards the shape rather than the mechanism. The chunk name used to appear
+     * twice - once in our prefix, once in LuaJ's location - which on eighty
+     * columns is width spent saying the same thing. LuaJ locates a compile
+     * failure itself, so we add nothing.
+     */
     @Test
-    public void aChunkThatDoesNotCompileRaisesVmException() {
+    public void aCompileFailureStartsWithTheChunkNameOnce() {
         VmException thrown = loadFailureOf("local x =");
 
-        assertTrue(thrown.getMessage().contains("does not compile"),
+        assertTrue(thrown.getMessage().startsWith(CHUNK_NAME + ":"),
+                "message was: " + thrown.getMessage());
+    }
+
+    /**
+     * The same assertion on the other path, and it is not redundant: measured on
+     * the embedded jar, the two paths render the chunk name differently.
+     * {@code LexState} strips the '@' that marks a file name and so does the
+     * traceback, but {@code LuaClosure}'s own runtime prefix copies the source
+     * verbatim - so a player reads {@code @boot.lua:2}. No chunk name satisfies
+     * both paths, which is why one of them is repaired by hand.
+     */
+    @Test
+    public void aRuntimeFailureStartsWithTheChunkNameOnce() {
+        VmException thrown = runFailureOf("local f = nil; f()");
+
+        assertTrue(thrown.getMessage().startsWith(CHUNK_NAME + ":"),
                 "message was: " + thrown.getMessage());
     }
 
@@ -240,12 +262,27 @@ public class LuaJVmTest {
         assertNull(failure.get(), "stopping a machine is not a failure");
     }
 
+    /**
+     * Inverted deliberately. It used to assert that both audiences receive the
+     * same string; the javadoc of {@code failure} has always claimed "two
+     * audiences, two mechanisms", and until now the two contents were identical,
+     * so the claim cost nothing. A screen twenty-five rows tall makes it cost
+     * four for one error, three of which say nothing to a player.
+     *
+     * <p>The second assertion is what makes this a guard: without it the test
+     * would still pass against a VM that truncated the exception too, and the
+     * traceback would be gone from both places at once.
+     */
     @Test
-    public void aFailingScriptIsReportedOnItsOwnOutputChannel() {
+    public void thePlayerGetsOneLineAndTheExceptionKeepsTheRest() {
         VmException thrown = runFailureOf("local f = nil; f()");
 
         assertEquals(1, _written.size());
-        assertEquals(thrown.getMessage(), new String(_written.get(0), UTF_8));
+        String shown = new String(_written.get(0), UTF_8);
+
+        assertEquals(thrown.getMessage().lines().findFirst().orElseThrow(), shown);
+        assertTrue(thrown.getMessage().length() > shown.length(),
+                "the traceback should have stayed in the exception");
     }
 
     @Test

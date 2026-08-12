@@ -37,6 +37,17 @@ public class ComputerBlockEntity extends BlockEntity {
             print('MComputer booting')
             print('the instruction budget is armed')
             """.getBytes(StandardCharsets.UTF_8);
+//    private static final byte[] BOOT_SCRIPT = """
+//            print('MComputer booting')
+//            error('boom')
+//            """.getBytes(StandardCharsets.UTF_8);
+//    private static final byte[] BOOT_SCRIPT = """
+//            print('MComputer booting'
+//            """.getBytes(StandardCharsets.UTF_8);
+//    private static final byte[] BOOT_SCRIPT = """
+//            print('MComputer booting')
+//            while true do end
+//            """.getBytes(StandardCharsets.UTF_8);
 
     private static final int SCREEN_WIDTH = 80;
     private static final int SCREEN_HEIGHT = 25;

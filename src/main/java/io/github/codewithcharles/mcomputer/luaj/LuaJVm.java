@@ -45,6 +45,14 @@ public final class LuaJVm implements Vm {
      * fragment of source. Without it LuaJ renders the location as
      * {@code [string "boot.lua"]:1:}, because a bare name is taken to be the
      * source text itself. Verified by running the embedded jar, not assumed.
+     *
+     * <p><b>The two error paths want opposite names, and only one can be given.</b>
+     * {@code LexState} strips this marker when it builds a compile error's
+     * location, and so does the traceback - but {@code LuaClosure}'s runtime
+     * prefix copies {@code source} verbatim, marker included. A bare name fixes
+     * the runtime path and breaks the compile one; {@code =} leaks exactly like
+     * {@code @}. Hence the marker stays and {@link #withoutFileMarker} repairs
+     * the one path that needs it.
      */
     private static final String NAMES_A_FILE = "@";
 
@@ -134,7 +142,7 @@ public final class LuaJVm implements Vm {
                     TEXT_SOURCE_ONLY,
                     globals);
         } catch (LuaError e) {
-            throw failure(chunkName + " does not compile: " + e.getMessage(), e);
+            throw failure(e.getMessage(), e);
         }
         this.chunkName = chunkName;
     }
@@ -156,9 +164,9 @@ public final class LuaJVm implements Vm {
             // why the run ended.
         } catch (BudgetExhausted e) {
             throw failure(
-                    chunkName + " exhausted its instruction budget of " + instructionBudget, e);
+                    chunkName + ": instruction budget exhausted (" + instructionBudget + ")", e);
         } catch (LuaError e) {
-            throw failure(chunkName + " failed: " + e.getMessage(), e);
+            throw failure(withoutFileMarker(e.getMessage()), e);
         }
     }
 
@@ -166,10 +174,16 @@ public final class LuaJVm implements Vm {
      * Reports a script failure on the script's own output channel, then hands
      * back the exception for the caller to throw.
      *
-     * <p>Two audiences, two mechanisms, and neither replaces the other: the
-     * written line is what the <b>player</b> reads - the server log today, the
-     * screen at milestone 3, with no change here - while the exception is the
-     * control flow that ends the run.
+     * <p>Two audiences, two mechanisms - and now genuinely two <b>contents</b>.
+     * The player reads <b>one line</b> on a screen twenty-five rows tall, where a
+     * traceback costs four for one error and three of them are noise to him. The
+     * exception keeps everything, so nothing is destroyed, only withheld from the
+     * audience it does not serve. A single-line message reaches both untouched.
+     *
+     * <p>Consequence, named because it is real: nothing catches the exception
+     * today, so the traceback currently goes nowhere. That is acceptable while a
+     * boot script is two lines. It stops being acceptable when a shell calls
+     * functions, and that is the moment to give it a destination.
      *
      * <p>The only place this class encodes text on the way out, and it is
      * legitimate exactly because the message is <b>ours</b>, not the script's
@@ -180,8 +194,25 @@ public final class LuaJVm implements Vm {
      * as {@code ComponentException.badArgument}.
      */
     private VmException failure(String message, Throwable cause) {
-        output.write(message.getBytes(StandardCharsets.UTF_8));
+        output.write(firstLine(message).getBytes(StandardCharsets.UTF_8));
         return new VmException(message, cause);
+    }
+
+    private static String firstLine(String message) {
+        int lineBreak = message.indexOf('\n');
+        return lineBreak < 0 ? message : message.substring(0, lineBreak);
+    }
+
+    /**
+     * Removes the marker LuaJ copies verbatim into a runtime error's location.
+     * See {@link #NAMES_A_FILE} for why this exists on one path and not the
+     * other. Expressed against the constant rather than a literal, so the day
+     * the marker changes this follows it.
+     */
+    private String withoutFileMarker(String message) {
+        return message.startsWith(NAMES_A_FILE + chunkName)
+                ? message.substring(NAMES_A_FILE.length())
+                : message;
     }
 
     /**
