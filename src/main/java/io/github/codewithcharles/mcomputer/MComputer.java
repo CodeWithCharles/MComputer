@@ -2,6 +2,8 @@ package io.github.codewithcharles.mcomputer;
 
 import io.github.codewithcharles.mcomputer.minecraft.block.MComputerBlocks;
 import io.github.codewithcharles.mcomputer.minecraft.block.entity.MComputerBlockEntities;
+import io.github.codewithcharles.mcomputer.minecraft.item.MComputerItemGroups;
+import io.github.codewithcharles.mcomputer.minecraft.item.MComputerItems;
 import net.fabricmc.api.ModInitializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -23,5 +25,7 @@ public class MComputer implements ModInitializer {
         LOGGER.info("Hello World from MComputer {} on Minecraft {}", VERSION, MINECRAFT);
         MComputerBlocks.register();
         MComputerBlockEntities.register();
+        MComputerItems.register();
+        MComputerItemGroups.register();
     }
 }

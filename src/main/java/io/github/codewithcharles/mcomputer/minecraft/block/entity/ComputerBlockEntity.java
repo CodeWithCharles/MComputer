@@ -33,27 +33,28 @@ public class ComputerBlockEntity extends BlockEntity {
     /** TODO: a guess, like MAX_TASKS_PER_TICK. Tune when a real script exists. */
     private static final int INSTRUCTION_BUDGET = 5_000_000;
 
-//    private static final byte[] BOOT_SCRIPT = """
-//            print('MComputer booting')
-//            print('the instruction budget is armed')
-//            """.getBytes(StandardCharsets.UTF_8);
+    private static final byte[] BOOT_SCRIPT = """
+            print('MComputer booting')
+            print('the instruction budget is armed')
+            """.getBytes(StandardCharsets.UTF_8);                 // Regular print
 //    private static final byte[] BOOT_SCRIPT = """
 //            print('MComputer booting')
 //            error('boom')
-//            """.getBytes(StandardCharsets.UTF_8);
+//            """.getBytes(StandardCharsets.UTF_8);                 // Error
 //    private static final byte[] BOOT_SCRIPT = """
 //            print('MComputer booting'
-//            """.getBytes(StandardCharsets.UTF_8);
+//            """.getBytes(StandardCharsets.UTF_8);                 // Typo
 //    private static final byte[] BOOT_SCRIPT = """
 //            print('MComputer booting')
+//            print('Canine I love you so much <3')
 //            while true do end
-//            """.getBytes(StandardCharsets.UTF_8);
-    private static final byte[] BOOT_SCRIPT = """
-            print('MComputer booting')
-            print('\\218\\196\\196\\196\\196\\196\\196\\191')
-            print('\\179 caf\\130 \\179')
-            print('\\192\\196\\196\\196\\196\\196\\196\\217')
-            """.getBytes(StandardCharsets.UTF_8);
+//            """.getBytes(StandardCharsets.UTF_8);                 // BUDGET EXPIRED IF BUDGET TOO LOW
+//    private static final byte[] BOOT_SCRIPT = """
+//            print('MComputer booting')
+//            print('\\218\\196\\196\\196\\196\\196\\196\\191')
+//            print('\\179 caf\\130 \\179')
+//            print('\\192\\196\\196\\196\\196\\196\\196\\217')
+//            """.getBytes(StandardCharsets.UTF_8);                 // SPECIAL CHARSET
 
     private static final int SCREEN_WIDTH = 80;
     private static final int SCREEN_HEIGHT = 25;

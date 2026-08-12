@@ -1,4 +1,12 @@
 {
-  "parent": "minecraft:block/cube_all",
-  "textures": { "all": "minecraft:block/sea_lantern" }
+  "parent": "minecraft:block/cube",
+  "textures": {
+    "particle": "mcomputer:block/computer_front",
+    "north": "mcomputer:block/computer_front_on",
+    "south": "mcomputer:block/computer_back_on",
+    "west":  "mcomputer:block/computer_left_on",
+    "east":  "mcomputer:block/computer_right",
+    "up":    "mcomputer:block/computer_top",
+    "down":  "mcomputer:block/computer_top"
+  }
 }

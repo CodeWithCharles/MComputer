@@ -26,6 +26,7 @@
   "accessWidener": "mcomputer.ct",
   "depends": {
     "fabricloader": ">=0.19",
-    "minecraft": "${minecraft}"
+    "minecraft": "${minecraft}",
+    "fabric-creative-tab-api-v1": ">=1.0.0"
   }
 }

@@ -1,4 +1,12 @@
 {
-  "parent": "minecraft:block/cube_all",
-  "textures": { "all": "minecraft:block/iron_block" }
+  "parent": "minecraft:block/cube",
+  "textures": {
+    "particle": "mcomputer:block/computer_front",
+    "north": "mcomputer:block/computer_front",
+    "south": "mcomputer:block/computer_back",
+    "west":  "mcomputer:block/computer_left",
+    "east":  "mcomputer:block/computer_right",
+    "up":    "mcomputer:block/computer_top",
+    "down":  "mcomputer:block/computer_top"
+  }
 }

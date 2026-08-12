@@ -1,0 +1,15 @@
+{
+  "type": "minecraft:block",
+  "pools": [
+    {
+      "rolls": 1.0,
+      "conditions": [
+        { "condition": "minecraft:survives_explosion" }
+      ],
+      "entries": [
+        { "type": "minecraft:item", "name": "mcomputer:computer" }
+      ]
+    }
+  ],
+  "random_sequence": "mcomputer:blocks/computer"
+}
