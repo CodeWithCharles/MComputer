@@ -34,6 +34,7 @@ public final class Machine {
     private final Supplier<Vm> vms;
     private final byte[] bootChunk;
     private final String bootChunkName;
+    private final int signalQueueCapacity;
 
     /**
      * Everything that belongs to one run and dies with it.
@@ -43,7 +44,7 @@ public final class Machine {
      * whether the machine is on; one cannot. The VM is deliberately not in here
      * - the thread body is its only reader, and it captures it.
      */
-    private record Run(CallQueue queue, Thread luaThread) {
+    private record Run(CallQueue queue, SignalQueue signals, Thread luaThread) {
     }
 
     private Run run;
@@ -56,17 +57,22 @@ public final class Machine {
      *                        machine reboots
      * @param bootChunk       the script this computer runs, as bytes
      * @param bootChunkName   what its error messages call it
+     * @param signalQueueCapacity bound of the per-run signal queue. 256 is
+     *                            OpenComputers' default AND minimum; a full
+     *                            queue refuses the incoming signal.
      */
     public Machine(
             int maxTasksPerTick,
             Supplier<Vm> vms,
             byte[] bootChunk,
-            String bootChunkName)
+            String bootChunkName,
+            int signalQueueCapacity)
     {
         this.maxTasksPerTick = maxTasksPerTick;
         this.vms = Objects.requireNonNull(vms, "vms");
         this.bootChunk = Objects.requireNonNull(bootChunk, "bootChunk");
         this.bootChunkName = Objects.requireNonNull(bootChunkName, "bootChunkName");
+        this.signalQueueCapacity = signalQueueCapacity;
     }
 
     public boolean isRunning() {
@@ -78,6 +84,28 @@ public final class Machine {
             throw new IllegalStateException("machine is off");
         }
         return run.queue();
+    }
+
+    /**
+     * Hands the machine an event. Returns {@code false} when the machine is
+     * off or the queue is full - deliberately NOT an exception, unlike
+     * {@link #signalQueue()}: a key pressed at a stopped computer is a normal
+     * occurrence the emitter shrugs at, not a caller bug. Same asymmetry as
+     * Arguments' indexing, for the same reason - who produced the case decides
+     * how it is reported.
+     */
+    public boolean pushSignal(Signal signal) {
+        if (run == null) {
+            return false;
+        }
+        return run.signals().push(signal);
+    }
+
+    public SignalQueue signalQueue() {
+        if (run == null) {
+            throw new IllegalStateException("machine is off");
+        }
+        return run.signals();
     }
 
     public void start() {
@@ -101,7 +129,7 @@ public final class Machine {
             }
         }, "mcomputer-lua");
         luaThread.setDaemon(true);
-        run = new Run(new CallQueue(), luaThread);
+        run = new Run(new CallQueue(), new SignalQueue(signalQueueCapacity), luaThread);
         luaThread.start();
     }
 

@@ -30,6 +30,8 @@ public class ComputerBlockEntity extends BlockEntity {
      */
     private static final int MAX_TASKS_PER_TICK = 16;
 
+    private static final int SIGNAL_QUEUE_CAPACITY = 256;
+
     /** TODO: a guess, like MAX_TASKS_PER_TICK. Tune when a real script exists. */
     private static final int INSTRUCTION_BUDGET = 5_000_000;
 
@@ -93,7 +95,8 @@ public class ComputerBlockEntity extends BlockEntity {
             // printing binary corrupts the log entry and nothing else.
             () -> new LuaJVm(screenOutput, INSTRUCTION_BUDGET),
             BOOT_SCRIPT,
-            "boot.lua");
+            "boot.lua",
+            SIGNAL_QUEUE_CAPACITY);
 
     public ComputerBlockEntity(BlockPos pos, BlockState state) {
         super(MComputerBlockEntities.COMPUTER, pos, state);

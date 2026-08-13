@@ -18,6 +18,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class MachineTest {
 
     private static final int MAX_TASKS = 8;
+    private static final int SIGNAL_CAPACITY = 8;
     private static final byte[] BOOT = "print('hi')".getBytes(StandardCharsets.UTF_8);
 
     private final Vms _vms = new Vms();
@@ -129,7 +130,11 @@ class MachineTest {
     }
 
     private Machine machine(int maxTasks) {
-        return new Machine(maxTasks, _vms, BOOT, "boot.lua");
+        return new Machine(maxTasks, _vms, BOOT, "boot.lua", SIGNAL_CAPACITY);
+    }
+
+    private static Signal signal(String name) {
+        return new Signal(name, new Object[0]);
     }
 
     @Test
@@ -353,5 +358,58 @@ class MachineTest {
         }
 
         assertNull(uncaught.get(), "the failure reached the JVM's default handler");
+    }
+
+    @Test
+    void pushingASignalToAStoppedMachineIsRefused() {
+        assertFalse(machine(MAX_TASKS).pushSignal(signal("key_down")));
+    }
+
+    @Test
+    void askingAStoppedMachineForItsSignalQueueIsACallerBug() {
+        assertThrows(IllegalStateException.class, machine(MAX_TASKS)::signalQueue);
+    }
+
+    @Test
+    void aPushedSignalReachesTheRunningMachinesQueue() throws InterruptedException {
+        Machine machine = machine(MAX_TASKS);
+        _vms.blockUntilInterrupted = true;
+        machine.start();
+        Signal pushed = signal("key_down");
+
+        assertTrue(machine.pushSignal(pushed));
+        assertSame(pushed, machine.signalQueue().pull(0));
+        machine.stop();
+    }
+
+    /**
+     * The capacity is a constructor argument nothing else reads - same role as
+     * tickRunsAtMostMaxTasksPerTick, without which "tune it later" never tunes
+     * anything.
+     */
+    @Test
+    void theSignalQueueCapacityIsTheConstructorsNumber() throws InterruptedException {
+        Machine machine = new Machine(MAX_TASKS, _vms, BOOT, "boot.lua", 1);
+        _vms.blockUntilInterrupted = true;
+        machine.start();
+
+        assertTrue(machine.pushSignal(signal("first")));
+        assertFalse(machine.pushSignal(signal("second")));
+        machine.stop();
+    }
+
+    /** A machine reboots, it does not resume - now said about signals too. */
+    @Test
+    void aRebootStartsWithAFreshSignalQueue() throws InterruptedException {
+        Machine machine = machine(MAX_TASKS);
+        _vms.blockUntilInterrupted = true;
+        machine.start();
+        machine.pushSignal(signal("stale"));
+
+        machine.stop();
+        machine.start();
+
+        assertNull(machine.signalQueue().pull(0));
+        machine.stop();
     }
 }
