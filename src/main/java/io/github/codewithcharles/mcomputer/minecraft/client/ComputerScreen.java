@@ -51,9 +51,6 @@ public final class ComputerScreen extends Screen {
             new FontDescription.Resource(
                     Identifier.fromNamespaceAndPath(MComputer.MOD_ID, "terminal")));
 
-    /** TEMPORARY PROBE - delete once it has answered. */
-    private boolean _probed = false;
-
     /**
      * How many physical pixels a font pixel may occupy. It is the terminal's
      * apparent size, and the only knob worth turning here: 2 gives a framed
@@ -140,13 +137,6 @@ public final class ComputerScreen extends Screen {
                 width * guiScale / outerWidth,
                 height * guiScale / outerHeight)));
         float scale = (float) steps / guiScale;
-
-        if (!_probed) {
-            _probed = true;
-            MComputer.LOGGER.info(
-                    "terminal {}x{} | fenetre {}x{} | guiScale {} | steps {} | echelle {}",
-                    terminalWidth, terminalHeight, width, height, guiScale, steps, scale);
-        }
 
         graphics.pose().pushMatrix();
         graphics.pose().translate(
