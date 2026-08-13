@@ -1,5 +1,7 @@
 package io.github.codewithcharles.mcomputer.core.machine;
 
+import io.github.codewithcharles.mcomputer.core.component.Component;
+import io.github.codewithcharles.mcomputer.core.component.ComponentApi;
 import io.github.codewithcharles.mcomputer.core.vm.Vm;
 import io.github.codewithcharles.mcomputer.core.vm.VmException;
 import org.junit.jupiter.api.Test;
@@ -8,6 +10,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -410,6 +413,39 @@ class MachineTest {
         machine.start();
 
         assertNull(machine.signalQueue().pull(0));
+        machine.stop();
+    }
+
+    /**
+     * The registry the machine hands out and the bus it hands out are wired to
+     * each other - a bus built on its own private registry passes every other
+     * test and resolves nothing.
+     */
+    @Test
+    void aComponentInstalledWhileOffIsVisibleThroughTheBus() {
+        Machine machine = machine(MAX_TASKS);
+
+        machine.components().add(
+                new Component(UUID.randomUUID(), ComponentApi.builder("gpu").build()));
+
+        assertEquals(1, machine.componentBus().list().size());
+    }
+
+    /**
+     * Hardware is per MACHINE, execution is per RUN. Installed components
+     * survive a reboot; the queues deliberately do not.
+     */
+    @Test
+    void theInstalledComponentsSurviveAReboot() {
+        Machine machine = machine(MAX_TASKS);
+        machine.components().add(
+                new Component(UUID.randomUUID(), ComponentApi.builder("disk").build()));
+
+        machine.start();
+        machine.stop();
+        machine.start();
+
+        assertEquals(1, machine.componentBus().list().size());
         machine.stop();
     }
 }

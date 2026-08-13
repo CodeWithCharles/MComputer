@@ -1,5 +1,7 @@
 package io.github.codewithcharles.mcomputer.core.machine;
 
+import io.github.codewithcharles.mcomputer.core.component.ComponentBus;
+import io.github.codewithcharles.mcomputer.core.component.ComponentRegistry;
 import io.github.codewithcharles.mcomputer.core.vm.Vm;
 import io.github.codewithcharles.mcomputer.core.vm.VmException;
 
@@ -35,6 +37,14 @@ public final class Machine {
     private final byte[] bootChunk;
     private final String bootChunkName;
     private final int signalQueueCapacity;
+
+    /**
+     * Hardware, as opposed to execution: installed components belong to the
+     * MACHINE and survive a reboot, where the queues belong to the run and die
+     * with it. Mutated by the adapter on the server thread, machine on or off.
+     */
+    private final ComponentRegistry components = new ComponentRegistry();
+    private final ComponentBus componentBus = new ComponentBus(components);
 
     /**
      * Everything that belongs to one run and dies with it.
@@ -106,6 +116,14 @@ public final class Machine {
             throw new IllegalStateException("machine is off");
         }
         return run.signals();
+    }
+
+    public ComponentRegistry components() {
+        return components;
+    }
+
+    public ComponentBus componentBus() {
+        return componentBus;
     }
 
     public void start() {
