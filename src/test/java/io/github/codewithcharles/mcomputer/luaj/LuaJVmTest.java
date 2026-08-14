@@ -467,4 +467,75 @@ public class LuaJVmTest {
         assertTrue(_written.isEmpty(), "the script kept running after being stopped");
         assertTrue(flagWasPutBack, "the interrupt flag was not put back");
     }
+
+    /**
+     * OpenComputers defaults to math.huge, which this sandbox cannot name:
+     * MathLib is not installed, so absence is the ordinary route to it. Without
+     * this test a default of some large millisecond count passes everything
+     * else, and a shell parked on pullSignal wakes for nothing.
+     */
+    @Test
+    public void pullSignalWithNoArgumentWaitsWithoutATimeout() {
+        _machine.next = new Signal("key_down", new Object[0]);
+
+        runSource("computer.pullSignal()");
+
+        assertTrue(_machine.pulledWithoutTimeout, "a timeout was passed");
+    }
+
+    /** The other route to the same branch, and the one an OC script takes. */
+    @Test
+    public void anInfiniteTimeoutWaitsWithoutATimeout() {
+        _machine.next = new Signal("key_down", new Object[0]);
+
+        runSource("computer.pullSignal(1/0)");
+
+        assertTrue(_machine.pulledWithoutTimeout, "a timeout was passed");
+    }
+
+    /** Lua speaks seconds, core speaks milliseconds. 0.25 is exact in both. */
+    @Test
+    public void pullSignalConvertsSecondsToMilliseconds() {
+        runSource("computer.pullSignal(0.25)");
+
+        assertEquals(250L, _machine.lastTimeoutMillis);
+    }
+
+    /**
+     * A signal arrives unpacked, name first, as OpenComputers hands it over.
+     * The name is a String on the Java side and the converter refuses one as a
+     * value, so it cannot travel that way and this is what pins the shape.
+     */
+    @Test
+    public void aPulledSignalArrivesUnpacked() {
+        _machine.next = new Signal("key_down",
+                new Object[] { ADDRESS.getBytes(UTF_8), 97.0, 30.0 });
+
+        runSource("local name, address, char = computer.pullSignal()\n"
+                + "assert(name == 'key_down', 'name was ' .. tostring(name))\n"
+                + "assert(address == '" + ADDRESS + "', 'address was ' .. tostring(address))\n"
+                + "assert(char == 97, 'char was ' .. tostring(char))");
+    }
+
+    @Test
+    public void aPullThatTimesOutReturnsNothing() {
+        runSource("assert(computer.pullSignal(0) == nil)");
+    }
+
+    /**
+     * Same translation as on the component path, on a second call site that
+     * could forget it. Thread.interrupted() asserts and clears in one call: the
+     * flag must not be left standing on the JUnit thread.
+     */
+    @Test
+    public void anInterruptDuringAPullStopsTheRunWithoutFailing() {
+        _machine.interruptOnPull = true;
+        _vm.load("computer.pullSignal()\nprint('still running')".getBytes(UTF_8), CHUNK_NAME);
+
+        assertDoesNotThrow(_vm::run);
+        boolean flagWasPutBack = Thread.interrupted();
+
+        assertTrue(_written.isEmpty(), "the script kept running after being stopped");
+        assertTrue(flagWasPutBack, "the interrupt flag was not put back");
+    }
 }

@@ -29,6 +29,12 @@ import java.util.Arrays;
  * <p>Invariant: every row at or below the write position is blank. It holds by
  * construction, by {@link #clear()} and by scrolling, and it is what lets
  * {@link #writeLine} leave the tail of a short line alone.
+ *
+ * <p>Two writers, and they do not share a rule. {@link #writeLine} lays lines
+ * out and blanks what a short line does not cover, so a row it writes shows
+ * that line and nothing else. {@link #set} addresses cells and leaves the rest
+ * alone. There is no invariant about rows below the write position any more:
+ * set may write anywhere, which is what retired it.
  */
 public final class ScreenBuffer {
 
@@ -73,17 +79,42 @@ public final class ScreenBuffer {
      *         for a cell that does not exist is a caller bug.
      */
     public byte byteAt(int column, int row) {
-        if (column < 0 || column >= width || row < 0 || row >= height) {
-            throw new IndexOutOfBoundsException(
-                    "cell " + column + "," + row + " is outside " + width + "x" + height);
-        }
+        requireInsideGrid(column, row);
         return cells[row * width + column];
     }
 
     /**
+     * Writes bytes from a given cell: addressing rather than laying out. It
+     * does not advance the write position and does not wrap - what runs past
+     * the last column is dropped, as OpenComputers' gpu.set does, wrapping
+     * being the OS layer's job in Lua.
+     *
+     * <p>No byte is read here, {@code '\n'} included. That is
+     * {@link #writeLine}'s business, not a cell writer's.
+     *
+     * @throws IndexOutOfBoundsException if the starting cell is outside the
+     *         grid. Running past the right edge is not an error; starting
+     *         outside is a caller bug, like {@link #byteAt}.
+     */
+    public void set(int column, int row, byte[] bytes) {
+        requireInsideGrid(column, row);
+        int fits = Math.min(bytes.length, width - column);
+        System.arraycopy(bytes, 0, cells,row * width + column, fits);
+    }
+
+    private void requireInsideGrid(int column, int row) {
+        if (column < 0 || column >= width || row < 0 || row >= height) {
+            throw new IndexOutOfBoundsException(
+                    "cell " + column + "," + row + " is outside " + width + "x" + height);
+        }
+    }
+
+    /**
      * Writes one line, then advances. A segment longer than {@link #width()}
-     * wraps onto the following rows rather than being truncated. When the last
-     * row is full the grid scrolls up by one and the bottom row is blanked.
+     * wraps onto the following rows rather than being truncated, and each row
+     * it writes is blanked past the line's end, so nothing an earlier
+     * {@link #set} left there shows through. When the last row is full the grid
+     * scrolls up by one and the bottom row is blanked.
      *
      * <p>{@code '\n'} ends a line and is not stored. It separates rather than
      * terminates, so {@code "ab\n"} leaves a blank row below {@code ab}, which
@@ -115,6 +146,9 @@ public final class ScreenBuffer {
             }
             int chunk = Math.min(width, length - written);
             System.arraycopy(line, offset + written, cells, nextRow * width, chunk);
+            // A line replaces its row. This was unnecessary while writeLine was
+            // the only writer; set() can leave content anywhere.
+            Arrays.fill(cells, nextRow * width + chunk, (nextRow + 1) * width, BLANK);
             written += chunk;
             nextRow++;
         } while (written < length);
@@ -149,10 +183,9 @@ public final class ScreenBuffer {
     /**
      * Replaces every cell and the write position at once.
      *
-     * <p>The position is not optional. Restoring a full grid while leaving the
-     * position at zero yields a buffer whose rows below it are not blank - this
-     * class's one invariant, broken by construction, on an object nothing would
-     * flag as invalid.
+     * <p>The position is state, like the cells, and is not optional: a replica
+     * restored with the cursor at zero would put its next line where the
+     * original would not have.
      *
      * @param cells         exactly {@code width * height} bytes, row-major
      * @param writePosition where the next line lands, 0 to {@link #height()}

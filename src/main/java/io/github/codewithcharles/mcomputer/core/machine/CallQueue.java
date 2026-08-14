@@ -33,7 +33,7 @@ public final class CallQueue {
     public Object[] submit(ServerTask task) throws InterruptedException {
         Objects.requireNonNull(task, "task");
         if (shutdown) {
-            throw shutDown();
+            throw new ShutDown();
         }
 
         Entry entry = new Entry(task);
@@ -44,7 +44,7 @@ public final class CallQueue {
         // succeeds nobody else holds the entry, so throwing is safe; if it
         // fails, shutdown already marked it and await returns at once.
         if (shutdown && pending.remove(entry)) {
-            throw shutDown();
+            throw new ShutDown();
         }
 
         try {
@@ -95,18 +95,26 @@ public final class CallQueue {
     public void shutdown() {
         shutdown = true;
         for (Entry entry = pending.poll(); entry != null; entry = pending.poll()) {
-            entry.fail(shutDown());
+            entry.fail(new ShutDown());
         }
-    }
-
-    private static IllegalStateException shutDown() {
-        return new IllegalStateException("call queue shut down");
     }
 
     /** Work to be run on the server thread. */
     @FunctionalInterface
     public interface ServerTask {
         Object[] run();
+    }
+
+    /**
+     * The queue is shut down and nothing will run again. A subclass, so callers
+     * that only need "the queue refused" keep working against
+     * IllegalStateException, while the one that has to tell teardown from a
+     * component's own failure can.
+     */
+    static final class ShutDown extends IllegalStateException {
+        ShutDown() {
+            super("call queue shut down");
+        }
     }
 
     /** One submission: the work, where its result lands, and the waiter's gate. */

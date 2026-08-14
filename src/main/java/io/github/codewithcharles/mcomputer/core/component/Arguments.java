@@ -140,4 +140,19 @@ public final class Arguments {
     public Object raw(int index) {
         return at(index);
     }
+
+    /**
+     * Raises a bad-argument error for a reason this class cannot check itself:
+     * a colour it does not know, a coordinate outside the screen. It lives here
+     * because this object holds the method name, so a component using the
+     * static factory would have to write that name a second time.
+     *
+     * <p>Returns rather than throws, so call sites keep {@code throw
+     * arguments.badArgument(...)} and the compiler still sees a throw.
+     *
+     * @param index zero-based, rendered one-based
+     */
+    public ComponentException badArgument(int index, String reason) {
+        return ComponentException.badArgument(methodName, index, reason);
+    }
 }

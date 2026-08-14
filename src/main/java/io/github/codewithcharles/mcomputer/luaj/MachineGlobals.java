@@ -4,10 +4,8 @@ import io.github.codewithcharles.mcomputer.core.component.Arguments;
 import io.github.codewithcharles.mcomputer.core.component.ComponentException;
 import io.github.codewithcharles.mcomputer.core.machine.MachineAccess;
 
-import org.luaj.vm2.Globals;
-import org.luaj.vm2.LuaError;
-import org.luaj.vm2.LuaTable;
-import org.luaj.vm2.Varargs;
+import io.github.codewithcharles.mcomputer.core.machine.Signal;
+import org.luaj.vm2.*;
 import org.luaj.vm2.lib.VarArgFunction;
 
 import java.util.Objects;
@@ -94,7 +92,43 @@ final class MachineGlobals {
     private final class PullSignal extends VarArgFunction {
         @Override
         public Varargs invoke(Varargs args) {
-            throw new UnsupportedOperationException("not implemented");
+            try {
+                Arguments arguments = new Arguments(converter.toJava(args), "pullSignal");
+                double seconds = arguments.optDouble(0, Double.POSITIVE_INFINITY);
+
+                // Only a positive infinity waits without a bound. A negative one
+                // would otherwise block forever, where returning at once is what
+                // any negative timeout means.
+                Signal signal = seconds == Double.POSITIVE_INFINITY
+                        ? machine.pullSignal()
+                        : machine.pullSignal(millis(seconds));
+
+                return signal == null ? NONE : unpack(signal);
+            } catch (ComponentException expected) {
+                throw new LuaError(expected.getMessage());
+            } catch (RuntimeException ours) {
+                throw new HostFailure(ours);
+            } catch (InterruptedException interrupted) {
+                throw Stopped.afterInterruption();
+            }
         }
+    }
+
+    /**
+     * The cast saturates rather than wrapping, so a huge finite timeout cannot
+     * come out negative and return at once. NaN gives 0.
+     */
+    private static long millis(double seconds) {
+        return (long) (seconds * 1000.0);
+    }
+
+    /**
+     * Name first, then the values, as OpenComputers hands a signal over. The
+     * name is encoded here because it is ours, the way a failure message is; a
+     * script's own bytes are never decoded.
+     */
+    private Varargs unpack(Signal signal) {
+        return LuaValue.varargsOf(
+                LuaValue.valueOf(signal.name()), converter.toLua(signal.values()));
     }
 }

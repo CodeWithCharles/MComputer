@@ -227,4 +227,17 @@ public class ArgumentsTest {
         assertThrows(ComponentException.class,
                 () -> of(new byte[] { (byte) 0xFF }).optText(0, "none"));
     }
+
+    /**
+     * The route by which a component raises an argument error for a reason this
+     * class cannot check. Asserted on the whole message: the envelope is
+     * exactly the thing whose change must break a test.
+     */
+    @Test
+    void aComponentCanRaiseItsOwnBadArgument() {
+        Arguments arguments = new Arguments(new Object[] { 1.0 }, "set");
+
+        assertEquals("bad argument #1 to 'set' (column 0 is outside 1..80)",
+                arguments.badArgument(0, "column 0 is outside 1..80").getMessage());
+    }
 }

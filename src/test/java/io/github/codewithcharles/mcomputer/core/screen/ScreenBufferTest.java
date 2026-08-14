@@ -313,4 +313,95 @@ final class ScreenBufferTest {
         assertEquals((byte) '\r', buffer.byteAt(3, 0));
         assertEquals("     ", rowText(buffer, 1));
     }
+
+    @Test
+    void setWritesFromTheGivenCell() {
+        ScreenBuffer buffer = new ScreenBuffer(5, 2);
+
+        buffer.set(2, 1, bytes("ab"));
+
+        assertEquals("  ab ", rowText(buffer, 1));
+    }
+
+    /**
+     * Guards a decision. A set built on writeLine passes the test above and
+     * fails this one, and a shell's readline would scroll on every keystroke.
+     */
+    @Test
+    void setDoesNotMoveTheWritePosition() {
+        ScreenBuffer buffer = new ScreenBuffer(5, 2);
+        buffer.writeLine(bytes("hi"));
+
+        buffer.set(0, 1, bytes("ab"));
+
+        assertEquals(1, buffer.writePosition());
+    }
+
+    /** Guards a decision: what runs past the last column is dropped, not wrapped. */
+    @Test
+    void setTruncatesAtTheEndOfItsRowRatherThanWrapping() {
+        ScreenBuffer buffer = new ScreenBuffer(5, 2);
+
+        buffer.set(3, 0, bytes("abcde"));
+
+        assertEquals("   ab", rowText(buffer, 0));
+        assertEquals("     ", rowText(buffer, 1));
+    }
+
+    /**
+     * The counterweight to onlyNewlineEndsALine. writeLine reads that byte
+     * because it lays lines out; set addresses cells and reads none, which is
+     * what OpenComputers does.
+     */
+    @Test
+    void setStoresANewlineAsAnyOtherByte() {
+        ScreenBuffer buffer = new ScreenBuffer(5, 2);
+
+        buffer.set(0, 0, bytes("a\nb"));
+
+        assertEquals((byte) '\n', buffer.byteAt(1, 0));
+        assertEquals("     ", rowText(buffer, 1));
+    }
+
+    /** Same rule as byteAt: a cell that does not exist is a caller bug. */
+    @Test
+    void aSetOutsideTheGridIsRejected() {
+        ScreenBuffer buffer = new ScreenBuffer(3, 2);
+
+        assertThrows(IndexOutOfBoundsException.class, () -> buffer.set(3, 0, bytes("a")));
+        assertThrows(IndexOutOfBoundsException.class, () -> buffer.set(0, 2, bytes("a")));
+        assertThrows(IndexOutOfBoundsException.class, () -> buffer.set(-1, 0, bytes("a")));
+    }
+
+    /**
+     * set() can leave content on a row writeLine is about to use, so a short
+     * line has to blank what it does not cover. Invisible while writeLine was
+     * the only writer, which is exactly how long the old invariant held.
+     */
+    @Test
+    void aLineBlanksWhatItDoesNotCoverOnItsRow() {
+        ScreenBuffer buffer = new ScreenBuffer(5, 2);
+        buffer.set(0, 0, bytes("XXXXX"));
+
+        buffer.writeLine(bytes("ab"));
+
+        assertEquals("ab   ", rowText(buffer, 0));
+    }
+
+    /**
+     * The second row is what discriminates: a blanking done once in front of
+     * the chunk loop passes the test above and fails this one. The first row is
+     * fully covered on purpose, so only the last can show the omission.
+     */
+    @Test
+    void aWrappedLineBlanksTheTailOfItsLastRow() {
+        ScreenBuffer buffer = new ScreenBuffer(5, 2);
+        buffer.set(0, 0, bytes("XXXXX"));
+        buffer.set(0, 1, bytes("YYYYY"));
+
+        buffer.writeLine(bytes("abcdefg"));
+
+        assertEquals("abcde", rowText(buffer, 0));
+        assertEquals("fg   ", rowText(buffer, 1));
+    }
 }

@@ -34,16 +34,38 @@ final class RunAccess implements MachineAccess {
     @Override
     @SuppressWarnings("unchecked")
     public Map<String, byte[]> listComponents() throws InterruptedException {
-        // Boxed and unboxed on the same line: the queue's currency is Object[],
-        // the shape a component method returns.
-        return (Map<String, byte[]>) calls.submit(() -> new Object[] { components.list() })[0];
+        try {
+            // Boxed and unboxed on the same line: the queue's currency is
+            // Object[], the shape a component method returns.
+            return (Map<String, byte[]>) calls.submit(() -> new Object[] { components.list() })[0];
+        } catch (CallQueue.ShutDown teardown) {
+            throw runIsOver();
+        }
     }
 
     @Override
     public Object[] invoke(String address, String methodName, Object[] arguments)
             throws InterruptedException
     {
-        return calls.submit(() -> components.invoke(address, methodName, arguments));
+        try {
+            return calls.submit(() -> components.invoke(address, methodName, arguments));
+        } catch (CallQueue.ShutDown teardown) {
+            throw runIsOver();
+        }
+    }
+
+    /**
+     * A shut-down queue means this run is over, which is what an interruption
+     * already means one layer up. The translation belongs here because luaj
+     * cannot tell this apart from an IllegalStateException a component threw,
+     * and this class can.
+     *
+     * <p>The cause is dropped rather than kept: it carries the stack of the
+     * thread that called stop(), which describes a right-click and not the
+     * script.
+     */
+    private static InterruptedException runIsOver() {
+        return new InterruptedException("call queue shut down");
     }
 
     @Override

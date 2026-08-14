@@ -3,7 +3,9 @@ package io.github.codewithcharles.mcomputer.minecraft.block.entity;
 import com.mojang.serialization.Codec;
 import io.github.codewithcharles.mcomputer.MComputer;
 import io.github.codewithcharles.mcomputer.core.component.BoundaryLimits;
+import io.github.codewithcharles.mcomputer.core.component.Component;
 import io.github.codewithcharles.mcomputer.core.machine.Machine;
+import io.github.codewithcharles.mcomputer.core.screen.Gpu;
 import io.github.codewithcharles.mcomputer.core.screen.ScreenBuffer;
 import io.github.codewithcharles.mcomputer.core.screen.ScreenOutput;
 import io.github.codewithcharles.mcomputer.core.vm.VmException;
@@ -21,6 +23,7 @@ import net.minecraft.world.level.storage.ValueInput;
 import net.minecraft.world.level.storage.ValueOutput;
 
 import java.nio.charset.StandardCharsets;
+import java.util.UUID;
 
 public class ComputerBlockEntity extends BlockEntity {
 
@@ -34,8 +37,15 @@ public class ComputerBlockEntity extends BlockEntity {
     private static final int INSTRUCTION_BUDGET = 5_000_000;
 
     private static final byte[] BOOT_SCRIPT = """
-            print('MComputer booting')
-            print('the instruction budget is armed')
+            local gpu
+            for address, kind in pairs(component.list()) do
+                if kind == 'gpu' then gpu = address end
+            end
+            print('gpu at ' .. gpu)
+            local width, height = component.invoke(gpu, 'getResolution')
+            print('resolution ' .. width .. 'x' .. height)
+            component.invoke(gpu, 'set', 1, 5, 'written by the gpu')
+            print(done)
             """.getBytes(StandardCharsets.UTF_8);
 
     private static final int SCREEN_WIDTH = 80;
@@ -76,6 +86,12 @@ public class ComputerBlockEntity extends BlockEntity {
 
     public ComputerBlockEntity(BlockPos pos, BlockState state) {
         super(MComputerBlockEntities.COMPUTER, pos, state);
+        // Built into the block, as the keyboard is: the inventory that would
+        // make it an item is milestone 6. Installed once here and not per boot,
+        // because hardware belongs to the machine and survives a reboot. The
+        // address is opaque, so stabilising it later breaks no script that did
+        // not hardcode one.
+        machine.components().add(new Component(UUID.randomUUID(), Gpu.api(screen)));
     }
 
     public void toggle() {

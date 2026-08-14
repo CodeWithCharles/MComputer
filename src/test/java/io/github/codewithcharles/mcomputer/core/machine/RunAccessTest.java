@@ -192,4 +192,46 @@ class RunAccessTest {
         assertNull(caller.failure);
         assertSame(pushed, caller.result);
     }
+
+    /**
+     * A shut-down queue means the run is over, and this class is the only one
+     * that can tell that apart from an IllegalStateException a component threw.
+     * Left alone it reaches luaj as a fault of ours, kills the machine, and
+     * prints the stack of the right-click that stopped it - seen in game.
+     */
+    @Test
+    void aShutDownQueueEndsTheRunRatherThanFailingIt() {
+        _calls.shutdown();
+
+        assertThrows(InterruptedException.class,
+                () -> _access.invoke(GPU.toString(), "ping", new Object[0]));
+    }
+
+    @Test
+    void aShutDownQueueEndsAListingTheSameWay() {
+        _calls.shutdown();
+
+        assertThrows(InterruptedException.class, _access::listComponents);
+    }
+
+    /**
+     * The counterweight. A component throwing an IllegalStateException of its
+     * own must still arrive as one: without this the translation above could be
+     * widened to any IllegalStateException and would swallow a real bug of ours
+     * as an ordinary shutdown.
+     */
+    @Test
+    void anIllegalStateFromAComponentIsNotMistakenForTeardown() throws InterruptedException {
+        IllegalStateException boom = new IllegalStateException("boom");
+        installGpu(arguments -> {
+            throw boom;
+        });
+        Caller caller = call(() -> _access.invoke(GPU.toString(), "ping", new Object[0]));
+        awaitBlocked(caller);
+
+        drainUntil(_calls, 1);
+        caller.awaitCompletion();
+
+        assertSame(boom, caller.failure);
+    }
 }
