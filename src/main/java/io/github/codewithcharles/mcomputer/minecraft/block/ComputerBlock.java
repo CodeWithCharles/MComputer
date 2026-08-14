@@ -77,25 +77,22 @@ public final class ComputerBlock extends BaseEntityBlock {
             Player player,
             BlockHitResult hit)
     {
-        // SUCCESS and not SUCCESS_SERVER, and it is decided rather than
-        // inherited. The two differ only in who triggers the arm swing - the
-        // client by prediction, or the server on order. Vanilla picks
-        // SUCCESS_SERVER where success depends on server state the client
-        // cannot see: an occupied bed, a vault on cooldown. Ours always
-        // succeeds, so there is nothing to mispredict and the swing is honest.
+        // SUCCESS and not SUCCESS_SERVER: the two differ only in who triggers
+        // the arm swing, and ours always succeeds, so there is nothing to
+        // mispredict. Vanilla picks SUCCESS_SERVER where success depends on
+        // server state the client cannot see.
 
-        // Shift + right-click opens the terminal, plain right-click keeps the
-        // toggle. Both assignments are DELIBERATELY PROVISIONAL - decisions.md
-        // promises the plain right-click to the components GUI at milestone 4.
+        // Shift + right-click opens the terminal, plain right-click toggles.
+        // Both are provisional: the plain right-click is promised to the
+        // components GUI.
         if (player.isSecondaryUseActive()) {
             if (level.isClientSide()
                 && level.getBlockEntity(pos) instanceof ComputerBlockEntity computer) {
-                // The only reference in this project from common code to a
-                // client-only class. It holds because the JVM resolves a call
-                // site on first execution and this branch never runs on a
-                // dedicated server - a guard on CLASS LOADING rather than on
-                // behaviour, which is subtler than every other guard here and
-                // is only truly provable by running a dedicated server.
+                // The only reference from common code to a client-only
+                // class. It holds because the JVM resolves a call site on
+                // first execution and this branch never runs on a dedicated
+                // server: a guard on class loading rather than on behaviour,
+                // and provable only by running one.
                 ComputerScreen.open(computer);
             }
             return InteractionResult.SUCCESS;

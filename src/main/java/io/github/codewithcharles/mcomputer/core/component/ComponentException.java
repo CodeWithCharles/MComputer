@@ -4,18 +4,12 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * An <b>expected</b> failure of a component call, to be converted into a Lua
- * error at the boundary.
+ * An expected failure of a component call, converted into a Lua error at the
+ * boundary: the script called wrong, or the component cannot comply right now.
  *
- * <p>The distinction this type carries is the point of it: a
- * {@code ComponentException} means the Lua script did something wrong, or asked
- * for something the component cannot do right now (disk full, screen not bound).
- * Any <i>other</i> unchecked exception escaping a {@link ComponentMethod} means
- * <b>our Java code is broken</b> and must not be quietly turned into a Lua
- * error - it gets logged and stops the machine loudly.
- *
- * <p>Without this split, a stray {@code NullPointerException} in a component
- * would surface to the player as a puzzling Lua error and never be seen by us.
+ * <p>Any other unchecked exception out of a {@link ComponentMethod} means our
+ * Java code is broken. It stays loud instead of reaching the player as a
+ * puzzling Lua error we never see.
  */
 public class ComponentException extends RuntimeException {
 
@@ -24,22 +18,20 @@ public class ComponentException extends RuntimeException {
     }
 
     /**
-     * The base envelope, without a method name:
-     * {@code "bad argument #1 (string expected, got number)"}.
+     * {@code bad argument #1 (string expected, got number)}.
      *
-     * @param index zero-based, as used by {@link Arguments}; rendered one-based
+     * @param index zero-based, rendered one-based
      */
     public static ComponentException badArgument(int index, String expected, Object actual) {
         return badArgument(index, describe(expected, actual));
     }
 
     /**
-     * The same envelope, with the reason written out in full. For the failures
-     * where the type is <b>correct</b> and "number expected, got number" would
-     * be nonsense: an integer accessor handed 1.5, a text accessor handed bytes
-     * that are not valid UTF-8.
+     * The same envelope with the reason spelled out, for failures where the
+     * type is correct and "number expected, got number" would be nonsense: an
+     * integer accessor handed 1.5, a text accessor handed invalid UTF-8.
      *
-     * @param index zero-based, as used by {@link Arguments}; rendered one-based
+     * @param index zero-based, rendered one-based
      */
     public static ComponentException badArgument(int index, String reason) {
         return new ComponentException(envelope(index, "", reason));
@@ -47,13 +39,10 @@ public class ComponentException extends RuntimeException {
 
     /**
      * Lua's own idiom, method name included:
-     * {@code "bad argument #1 to 'set' (string expected, got number)"}.
+     * {@code bad argument #1 to 'set' (string expected, got number)}.
+     * {@link Arguments} holds the name and is what calls this.
      *
-     * <p>{@link Arguments} holds the name and is what calls this. The name is
-     * not information the player lacks - the traceback already gives the call
-     * site - it is conformance to a message shape every Lua programmer knows.
-     *
-     * @param index zero-based, as used by {@link Arguments}; rendered one-based
+     * @param index zero-based, rendered one-based
      */
     public static ComponentException badArgument(
             String methodName,
@@ -64,7 +53,7 @@ public class ComponentException extends RuntimeException {
         return badArgument(methodName, index, describe(expected, actual));
     }
 
-    /** @param index zero-based, as used by {@link Arguments}; rendered one-based */
+    /** @param index zero-based, rendered one-based */
     public static ComponentException badArgument(String methodName, int index, String reason) {
         return new ComponentException(envelope(index, " to '" + methodName + "'", reason));
     }
@@ -78,16 +67,12 @@ public class ComponentException extends RuntimeException {
     }
 
     /**
-     * The boundary's Java types, rendered in Lua's own vocabulary.
+     * The boundary's Java types in Lua's vocabulary. {@code core} may not see
+     * {@code org.luaj}, and what arrives here is a converted Java value anyway.
      *
-     * <p>{@code core} may not see {@code org.luaj}, so {@code LuaValue.typename()}
-     * is out of reach here - and it would be the wrong tool anyway, since what
-     * arrives at this point is a converted Java value, not a {@code LuaValue}.
-     *
-     * <p>The default arm should be unreachable: the converter rejected anything
-     * off the closed list before a component method ever saw it. It reports the
-     * Java name deliberately - if it ever fires, the log must say which type got
-     * through rather than hide it behind a plausible-looking Lua name.
+     * <p>The default arm should be unreachable. It reports the Java name: if it
+     * ever fires, the converter let something through and the log has to say
+     * what, rather than hide it behind a plausible Lua name.
      */
     private static String typeName(Object value) {
         return switch (value) {

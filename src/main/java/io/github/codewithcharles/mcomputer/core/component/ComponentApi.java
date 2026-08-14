@@ -9,9 +9,7 @@ import java.util.Set;
 
 /**
  * The Lua-facing surface of one component: a type name, and a fixed table of
- * named methods.
- *
- * <p>Built explicitly, in ordinary Java, with no annotations and no reflection:
+ * named methods. No annotations, no reflection.
  *
  * <pre>{@code
  * ComponentApi.builder("gpu")
@@ -20,9 +18,9 @@ import java.util.Set;
  *     .build();
  * }</pre>
  *
- * <p>An instance is built <b>per component instance</b>, not per type: a gpu's
- * methods close over that particular gpu's state. Carrying no address is what
- * lets it be built and tested with no notion of where addresses come from.
+ * <p>Built per component instance, not per type: a gpu's methods close over
+ * that gpu's state. It carries no address, so it can be built and tested with
+ * no notion of where addresses come from.
  *
  * <p>Immutable once built.
  */
@@ -65,9 +63,9 @@ public final class ComponentApi {
         }
 
         /**
-         * @throws IllegalArgumentException if {@code name} was already declared.
-         *         A silently overwritten method is a bug that surfaces as a
-         *         missing feature hours later.
+         * @throws IllegalArgumentException if {@code name} was already
+         *         declared. A silently overwritten method surfaces as a missing
+         *         feature hours later.
          */
         public Builder method(String name, ComponentMethod method) {
             Objects.requireNonNull(name, "name");
@@ -81,8 +79,7 @@ public final class ComponentApi {
 
         /**
          * Callable more than once; each call yields an independent instance.
-         * The copy the immutability needs is the same copy that makes reuse
-         * safe, so nothing is spent on forbidding it.
+         * The copy immutability needs is the copy that makes reuse safe.
          */
         public ComponentApi build() {
             return new ComponentApi(type, Collections.unmodifiableMap(new LinkedHashMap<>(methods)));

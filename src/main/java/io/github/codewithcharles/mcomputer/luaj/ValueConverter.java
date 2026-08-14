@@ -13,43 +13,33 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * Translates between LuaJ values and the closed list of boundary values.
- *
- * <p>This class is the reason the {@code luaj} package exists. It imports
- * {@code org.luaj}, so it cannot live in {@code core} - the ArchUnit rule
- * forbidding it is what forces this separation to be real rather than intended.
- *
- * <p>The mapping, and it is the whole contract:
+ * Translates between LuaJ values and the closed list of boundary values. It
+ * imports {@code org.luaj}, which is why the {@code luaj} package exists.
  *
  * <pre>
- *   nil      <-> null
- *   boolean  <-> Boolean
- *   number   <-> Double        (Lua has no integers; never send a long)
- *   string   <-> byte[]        (Lua strings are bytes, not text)
- *   table    <-> Map           (incoming, always)
- *   table    <-  Map or List   (outgoing; a List becomes keys 1..n)
+ *   nil      &lt;-&gt; null
+ *   boolean  &lt;-&gt; Boolean
+ *   number   &lt;-&gt; Double        (Lua has no integers; never send a long)
+ *   string   &lt;-&gt; byte[]        (Lua strings are bytes, not text)
+ *   table    &lt;-&gt; Map           (incoming, always)
+ *   table    &lt;-  Map or List   (outgoing; a List becomes keys 1..n)
  * </pre>
  *
- * <p>Two asymmetries, both deliberate:
- * <ul>
- *   <li>A table always becomes a {@code Map} on the way in - no "looks like an
- *       array" heuristic. Incoming data is adversarial and must be
- *       unambiguous. On the way out the data is ours, so {@code List} is
- *       allowed as a convenience. Round-tripping therefore holds in <b>Lua</b>
- *       terms, not in Java ones.</li>
- *   <li><b>Table keys that are strings become {@code String}, not
- *       {@code byte[]}.</b> A key needs value equality to work at all, and
- *       {@code byte[]} has none - {@code map.get(bytes)} would silently never
- *       match. Values keep their bytes.</li>
- * </ul>
+ * <p>Two asymmetries. A table always becomes a {@code Map} on the way in, with
+ * no "looks like an array" heuristic, because incoming data is adversarial and
+ * must be unambiguous; on the way out the data is ours, so {@code List} is
+ * allowed. Round-tripping therefore holds in Lua terms, not Java ones.
+ *
+ * <p>And string table keys become {@code String}, not {@code byte[]}: a key
+ * needs value equality, which {@code byte[]} has none of, so
+ * {@code map.get(bytes)} would silently never match. Values keep their bytes.
  *
  * <p>Both directions are checked. Inbound because a player's script is
  * untrusted; outbound because the switch has to exist anyway, so rejecting a
- * stray {@code Long} or {@code String} costs nothing and catches our own bugs
- * at the only place they can still be understood.
+ * stray {@code Long} costs nothing and catches our own bugs where they can
+ * still be understood.
  *
- * <p>Not thread-safe in any interesting way, but immutable, therefore safe
- * to share.
+ * <p>Immutable, therefore safe to share.
  */
 public final class ValueConverter {
 
@@ -61,9 +51,7 @@ public final class ValueConverter {
 
     /** Lua call arguments to boundary values, ready to be wrapped in
      * {@code Arguments}.
-     * @apiNote {@code Varargs} is 1-based, the returned array is 0-based. This
-     *          is the only other place that shift exists; {@code Arguments}
-     *          owns the second one, on the way to the error message.
+     * @apiNote {@code Varargs} is 1-based, the returned array is 0-based.
      *
      * @throws ComponentException if a value is outside the closed list, or the
      *         structure exceeds the limits. This is a script error and becomes
@@ -83,8 +71,7 @@ public final class ValueConverter {
      *
      * @throws IllegalStateException if a value is outside the closed list. Not
      *         a {@code ComponentException}: nothing the player did can cause
-     *         this, so it must surface as the bug it is instead of being
-     *         converted into a Lua error and lost.
+     *         this, so it must surface as the bug it is.
      */
     public Varargs toLua(Object[] values) {
         Budget budget = new Budget(limits.maxEntries());
@@ -96,9 +83,11 @@ public final class ValueConverter {
     }
 
     // --- the recursion ----------------------------------------------------
-    // Depth is counted down, the entry budget is shared across the whole walk.
-    // Both are threaded through the recursion rather than held as fields, so
-    // the converter stays stateless and one call cannot poison the next.
+    // Depth counts down, the entry budget is shared across the whole walk, and
+    // both are threaded through rather than held as fields, so one call cannot
+    // poison the next. The depth limit doubles as the cycle detector: a cyclic
+    // structure cannot be validated after being built, because building it is
+    // what kills you.
 
     private Map<Object, Object> tableToJava(LuaTable table, int depth, Budget budget) {
         if (depth <= 0) {
@@ -128,6 +117,11 @@ public final class ValueConverter {
         };
     }
 
+    /**
+     * {@code tojstring()} never throws: a stray {@code 0xFF} becomes a
+     * replacement character, so two distinct Lua keys can collapse onto one
+     * Java key and silently overwrite each other.
+     */
     private static String textKey(LuaString key) {
         if (!key.isValidUtf8()) {
             throw new ComponentException("table key is not valid UTF-8");
@@ -163,11 +157,8 @@ public final class ValueConverter {
         return out;
     }
 
-    /**
-     * Accept a String while toLua refuses it because keys becomes String and values keeps their bytes.
-     * @param key key to convert
-     * @return The key to lua value
-     */
+    /** Accepts a {@code String}, which {@link #toLua} refuses: keys are decoded
+     * text where values keep their bytes. */
     private static LuaValue keyToLua(Object key) {
         return switch (key) {
             case String text -> LuaValue.valueOf(text);
@@ -203,7 +194,7 @@ public final class ValueConverter {
         };
     }
 
-    /** A mutable counter for one conversion. Deliberately not a field. */
+    /** A mutable counter for one conversion. */
     private static final class Budget {
         private int remaining;
 
@@ -212,10 +203,9 @@ public final class ValueConverter {
         }
 
         /**
-         * @return {@code false} when the budget is exhausted. Deliberately not an
-         *         exception: the two directions of conversion report the same
-         *         overflow with different exception types, and this counter has no
-         *         business knowing which one it is serving.
+         * @return {@code false} when exhausted. Not an exception: the two
+         *         directions report the same overflow with different types, and
+         *         this counter cannot know which one it serves.
          */
         boolean trySpend() {
             if (remaining <= 0) {

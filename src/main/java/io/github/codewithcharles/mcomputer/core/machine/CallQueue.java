@@ -6,18 +6,16 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CountDownLatch;
 
 /**
- * The hand-off between a Lua thread and the server thread.
+ * The hand-off between a Lua thread and the server thread. A Lua thread that
+ * needs the game submits work here and blocks; the server thread drains during
+ * its tick, runs the work, and wakes the waiter with the result.
  *
- * <p>A Lua thread that needs the game submits work here and <b>blocks</b>. The
- * server thread drains the queue during its tick, runs the work, and wakes the
- * waiter with the result.
+ * <p>Because the submitter blocks until its own task has run, there is at most
+ * one task in flight per machine, so the queue only ever holds as many entries
+ * as there are running computers.
  *
- * <p><b>Invariant worth stating:</b> because the submitting thread blocks until
- * its own task has run, there is at most <b>one task in flight per machine</b>.
- * The queue only ever holds as many entries as there are running computers.
- *
- * <p>This class knows nothing about components. It moves work across a thread
- * boundary, which makes it testable with two plain Java threads and a lambda.
+ * <p>Knows nothing about components: it moves work across a thread boundary,
+ * which makes it testable with two plain threads and a lambda.
  */
 public final class CallQueue {
 
@@ -40,6 +38,11 @@ public final class CallQueue {
 
         Entry entry = new Entry(task);
         pending.add(entry);
+        // The only delicate line here. Without it the first check can pass,
+        // shutdown() can run to completion, and the add land afterwards: the
+        // entry arrives after the sweep and nobody ever wakes it. If the remove
+        // succeeds nobody else holds the entry, so throwing is safe; if it
+        // fails, shutdown already marked it and await returns at once.
         if (shutdown && pending.remove(entry)) {
             throw shutDown();
         }
@@ -61,10 +64,9 @@ public final class CallQueue {
     /**
      * Called from the server thread, once per tick.
      *
-     * <p>An exception thrown by a task must be delivered to the thread that
-     * submitted it and must not escape this method - one misbehaving computer
-     * cannot be allowed to break the tick for the whole server. This is the
-     * single most important behaviour of this class.
+     * <p>An exception thrown by a task is delivered to the thread that submitted
+     * it and must not escape here: one misbehaving computer cannot break the
+     * tick for the whole server.
      *
      * @param maxTasks upper bound for one tick
      * @return how many tasks were run
@@ -84,8 +86,11 @@ public final class CallQueue {
 
     /**
      * Refuses further submissions and releases every waiting thread with an
-     * error. Without this, a Lua thread blocked on a queue nobody drains again
-     * (server stopping, chunk unloaded, ...) waits forever.
+     * error. Without it, a Lua thread blocked on a queue nobody drains again
+     * waits forever. Queued tasks do not run: shutdown happens while the machine
+     * is being torn down, so they would touch the world on the way out.
+     *
+     * <p>{@link #drain} stays legal afterwards and finds an empty queue.
      */
     public void shutdown() {
         shutdown = true;
@@ -116,6 +121,15 @@ public final class CallQueue {
             this.task = task;
         }
 
+        /**
+         * Rethrown to the submitter as the same instance, never wrapped: a
+         * ComponentException has to arrive as one for the boundary to make a
+         * Lua error of it, and a NullPointerException has to arrive as itself
+         * so we see it.
+         *
+         * <p>An Error is not caught. An OutOfMemoryError delivered as though
+         * one component had misbehaved keeps a broken server running.
+         */
         void run() {
             try {
                 result = task.run();

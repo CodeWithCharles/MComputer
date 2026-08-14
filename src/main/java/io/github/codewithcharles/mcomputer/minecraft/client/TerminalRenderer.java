@@ -15,33 +15,24 @@ import net.minecraft.resources.Identifier;
 /**
  * How a ScreenBuffer is drawn: the font, the cell, the frame, the scale rule
  * and the cell loop. Knows nothing about whose buffer it is or why it is on
- * screen - that is the caller's business.
+ * screen.
  *
- * <p>It exists apart from {@link ComputerScreen} because the screen block draws
- * the same buffer from a different window, and in-world rendering will draw it
- * from no window at all.
- *
- * <p><b>CHANGING THE FONT.</b> Everything the terminal needs from its font is
- * the three constants below plus two numbers in
- * {@code assets/mcomputer/font/terminal.json}. To swap in another bitmap font:
+ * <p><b>Changing the font.</b> Everything the terminal needs is the three
+ * constants below plus two numbers in
+ * {@code assets/mcomputer/font/terminal.json}:
  * <ol>
- *   <li>the atlas is a <b>16 by 16 grid of cells</b>, white on transparent, at
+ *   <li>the atlas is a 16 by 16 grid of cells, white on transparent, at
  *       {@code assets/mcomputer/textures/font/terminal.png}. Cell {@code (r, c)}
- *       holds the glyph for byte {@code r * 16 + c}. Nothing else about the
- *       image matters - its total size is sixteen cells each way, whatever the
- *       cell size is;</li>
+ *       holds the glyph for byte {@code r * 16 + c};</li>
  *   <li>set {@link #CELL_WIDTH} and {@link #CELL_HEIGHT} to the cell size in
  *       pixels;</li>
  *   <li>in {@code terminal.json}, set {@code height} to CELL_HEIGHT and
- *       {@code ascent} to <b>7</b>, whatever the cell height is. Minecraft puts
- *       a glyph cell's top at {@code y + 7 - ascent}: the 7 is its own fixed
- *       baseline offset, not a property of the font. Vanilla's own ascii.png is
- *       8 tall and declares 7 for exactly this reason. Measured on four
- *       screenshots after two wrong guesses;</li>
+ *       {@code ascent} to 7 whatever the cell height is. Minecraft puts a glyph
+ *       cell's top at {@code y + 7 - ascent}: the 7 is its own baseline offset,
+ *       not a property of the font;</li>
  *   <li>leave the {@code chars} array alone. It maps cell {@code (r, c)} to
- *       {@code U+E000 + r * 16 + c}, a private-use code point, which is also
- *       what {@link #buildGlyphs()} asks for. Both ends are ours, so no Unicode
- *       table is involved and none can go stale.</li>
+ *       {@code U+E000 + r * 16 + c}, which is what {@link #buildGlyphs()} asks
+ *       for. Both ends are ours, so no Unicode table can go stale.</li>
  * </ol>
  */
 @Environment(EnvType.CLIENT)
@@ -53,11 +44,10 @@ final class TerminalRenderer {
                     Identifier.fromNamespaceAndPath(MComputer.MOD_ID, "terminal")));
 
     /**
-     * How many physical pixels a font pixel may occupy. It is the terminal's
-     * apparent size, and the only knob worth turning here: 2 gives a framed
-     * window on any screen, 3 fills a large one edge to edge, 1 is crisp and
-     * small. Never a fraction - that is what the whole scale calculation exists
-     * to avoid.
+     * How many physical pixels a font pixel may occupy, which is the terminal's
+     * apparent size: 2 gives a framed window on any screen, 3 fills a large one
+     * edge to edge, 1 is crisp and small. Never a fraction - a bitmap font
+     * blurs on any non-integer downscale.
      */
     private static final int MAX_PIXEL_SIZE = 1;
 
@@ -76,15 +66,12 @@ final class TerminalRenderer {
 
     /**
      * One Component per byte value, built once so that drawing a cell allocates
-     * nothing - eighty by twenty-five, every frame.
+     * nothing - eighty by twenty-five, every frame. The style selects the
+     * terminal font; {@code text(Font, String, ...)} would use the vanilla one,
+     * a bare string carrying no style.
      *
-     * <p>The style is what selects the terminal font; {@code text(Font, String,
-     * ...)} would use the vanilla one, because a bare string carries no style.
-     *
-     * <p><b>Every byte has a glyph.</b> There is no substitute character any
-     * more: byte {@code b} is code point {@code U+E000 + b}, and the atlas has a
-     * cell for all 256. A sink that cannot refuse a byte should not have to
-     * pretend one is unprintable.
+     * <p>Every byte has a glyph, so there is no substitute character: a sink
+     * that cannot refuse a byte should not pretend one is unprintable.
      */
     private static final Component[] GLYPHS = buildGlyphs();
 
@@ -105,8 +92,7 @@ final class TerminalRenderer {
      * {@code areaHeight} GUI units, framed, at the largest whole number of
      * physical pixels per font pixel that fits and that MAX_PIXEL_SIZE allows.
      *
-     * <p>The GUI scale is read from the window rather than taken as a
-     * parameter: it is a property of the window, which no caller owns.
+     * <p>The GUI scale is read from the window, which no caller owns.
      */
     public static void draw(
             GuiGraphicsExtractor graphics, Font font,
@@ -147,9 +133,8 @@ final class TerminalRenderer {
         for (int row = 0; row < screen.height(); row++) {
             for (int column = 0; column < screen.width(); column++) {
                 byte cell = screen.byteAt(column, row);
-                // A blank is most of a terminal. Skipping it turns two thousand
-                // draw calls into a few dozen on a screen that has printed a
-                // couple of lines.
+                // A blank is most of a terminal: skipping it turns two
+                // thousand draw calls into a few dozen.
                 if (cell == ScreenBuffer.BLANK) {
                     continue;
                 }

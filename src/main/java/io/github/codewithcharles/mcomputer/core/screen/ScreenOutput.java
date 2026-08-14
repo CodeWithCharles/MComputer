@@ -12,21 +12,18 @@ import java.util.concurrent.LinkedBlockingDeque;
  * drains.
  *
  * <p>It exists because a script's output does not arrive on one thread.
- * {@code print} reaches the sink from the Lua thread; a compile failure reaches
- * it from the server thread inside {@code Machine.start()}. {@code ScreenBuffer}
- * assumes a single thread, so something has to stand between them, and it is
- * this.
+ * {@code print} reaches the sink from the Lua thread, a compile failure from
+ * the server thread inside {@code Machine.start()}, and {@code ScreenBuffer}
+ * assumes a single thread.
  *
- * <p>Deliberately <b>not</b> a {@code CallQueue}. That class makes its submitter
- * wait for the server thread, which is right for a component call that returns a
- * value and wrong for {@code print}: it would cost the Lua thread up to a tick
- * per line printed. Nobody waits for the result of writing to a screen.
+ * <p>Not a {@code CallQueue}: that class makes its submitter wait for the
+ * server thread, which would cost the Lua thread up to a tick per printed line.
+ * Nobody waits for the result of writing to a screen.
  *
- * <p>The queue is bounded, and a full queue drops its <b>oldest</b> line. A
- * runaway {@code while true do print("x") end} costs few instructions, so the
- * budget does not bound it and the queue must. Losing lines is what a terminal
- * does anyway - they would have scrolled past - and dropping the oldest keeps
- * the newest, which is where the error that killed the script is.
+ * <p>The queue is bounded and a full one drops its oldest line. A runaway
+ * {@code while true do print("x") end} costs few instructions, so the budget
+ * does not bound it. Dropping the oldest keeps the newest, which is where the
+ * error that killed the script is.
  */
 public final class ScreenOutput implements VmOutput {
 
@@ -37,9 +34,8 @@ public final class ScreenOutput implements VmOutput {
     /**
      * @param buffer          where drained lines land
      * @param maxPendingLines how many lines may wait for the next drain,
-     *                        strictly positive. Injected rather than hardcoded
-     *                        so a test can fill it with three lines instead of
-     *                        a few hundred.
+     *                        strictly positive. Injected so a test can fill it
+     *                        with three lines instead of a few hundred.
      * @throws IllegalArgumentException if maxPendingLines is not positive
      */
     public ScreenOutput(ScreenBuffer buffer, int maxPendingLines) {
@@ -59,7 +55,9 @@ public final class ScreenOutput implements VmOutput {
 
     /**
      * Accepts one line, from any thread. Never blocks, never throws on a full
-     * queue: output is not an argument and cannot be refused.
+     * queue: output is not an argument and cannot be refused. A {@code while}
+     * rather than an {@code if}, or a failed offer racing a concurrent drain
+     * would return having written nothing.
      */
     @Override
     public void write(byte[] line) {
@@ -70,7 +68,8 @@ public final class ScreenOutput implements VmOutput {
 
     /**
      * Writes every waiting line into the buffer. Called on the draining thread
-     * and on no other.
+     * and on no other. The cap has a second job: without it, a Lua thread
+     * printing while we drain makes this a tick that never returns.
      *
      * @return how many lines were written, so a caller can tell whether
      *         anything changed without comparing buffers

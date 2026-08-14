@@ -6,53 +6,47 @@ import io.github.codewithcharles.mcomputer.core.vm.Vm;
 import io.github.codewithcharles.mcomputer.core.vm.VmException;
 
 import java.util.Objects;
-import java.util.function.Supplier;
 
 /**
  * One computer, seen from the side that does not know Minecraft exists.
  *
- * <p>Its {@code Run} <b>is</b> its state: a machine is on exactly when it has
- * one. There is no flag beside it, and the queue and the Lua thread cannot
- * disagree about whether the machine is on, because neither can be held without
- * the other.
+ * <p><b>Its {@code Run} is its state:</b> a machine is on exactly when it has
+ * one. No flag beside it, so the queues and the Lua thread cannot disagree
+ * about whether the machine is on.
  *
- * <p><b>A run is what its name says - one run.</b> {@code CallQueue.shutdown()}
- * is terminal and a VM does not resume, so {@code stop()} discards the whole run
- * and {@code start()} builds another. This is "a machine reboots, it does not
- * resume", written where the compiler can see it.
+ * <p>A run is one run. {@code CallQueue.shutdown()} is terminal and a VM does
+ * not resume, so {@code stop()} discards the whole run and {@code start()}
+ * builds another. A machine reboots; it does not resume.
  *
- * <p><b>{@code start()} spawns a thread; compilation does not run on it.</b> The
- * script is compiled here, on the calling thread, so a boot script that does not
- * compile stops the machine from ever being on instead of killing it a moment
- * later from a thread the caller cannot see.
+ * <p>{@code start()} spawns the Lua thread but compiles on the calling one, so
+ * a boot script that does not compile stops the machine from ever being on
+ * instead of killing it a moment later from a thread the caller cannot see.
  *
- * <p>Not thread-safe, and it does not need to be: {@code start}, {@code stop} and
- * {@code tick} are called from the server thread, and the only thing the Lua
- * thread ever touches is the {@link CallQueue}, which exists for exactly that.
+ * <p>Not thread-safe, and it does not need to be: {@code start}, {@code stop}
+ * and {@code tick} are called from the server thread, and all the Lua thread
+ * touches is what {@code RunAccess} hands it.
  */
 public final class Machine {
 
     private final int maxTasksPerTick;
-    private final Supplier<Vm> vms;
+    private final VmFactory vmFactory;
     private final byte[] bootChunk;
     private final String bootChunkName;
     private final int signalQueueCapacity;
 
     /**
-     * Hardware, as opposed to execution: installed components belong to the
-     * MACHINE and survive a reboot, where the queues belong to the run and die
+     * Hardware as opposed to execution: installed components belong to the
+     * machine and survive a reboot, where the queues belong to the run and die
      * with it. Mutated by the adapter on the server thread, machine on or off.
      */
     private final ComponentRegistry components = new ComponentRegistry();
     private final ComponentBus componentBus = new ComponentBus(components);
 
     /**
-     * Everything that belongs to one run and dies with it.
-     *
-     * <p>The 2026-08-10 rule is unchanged, only widened: a machine is on exactly
-     * when it has a run. Three separate nullable fields could disagree about
-     * whether the machine is on; one cannot. The VM is deliberately not in here
-     * - the thread body is its only reader, and it captures it.
+     * Everything that belongs to one run and dies with it. Three nullable
+     * fields could disagree about whether the machine is on; one record cannot.
+     * The VM is not in here - the thread body is its only reader and captures
+     * it.
      */
     private record Run(CallQueue queue, SignalQueue signals, Thread luaThread) {
     }
@@ -62,24 +56,22 @@ public final class Machine {
     /**
      * @param maxTasksPerTick upper bound handed to {@link CallQueue#drain(int)}
      *                        on each tick
-     * @param vms             produces a fresh VM per <b>run</b>, for the same
-     *                        reason the queue is per run: nothing resumes, a
-     *                        machine reboots
+     * @param vmFactory       produces the VM of one run and receives that run's
+     *                        plumbing
      * @param bootChunk       the script this computer runs, as bytes
      * @param bootChunkName   what its error messages call it
      * @param signalQueueCapacity bound of the per-run signal queue. 256 is
-     *                            OpenComputers' default AND minimum; a full
-     *                            queue refuses the incoming signal.
+     *                            OpenComputers' default and minimum.
      */
     public Machine(
             int maxTasksPerTick,
-            Supplier<Vm> vms,
+            VmFactory vmFactory,
             byte[] bootChunk,
             String bootChunkName,
             int signalQueueCapacity)
     {
         this.maxTasksPerTick = maxTasksPerTick;
-        this.vms = Objects.requireNonNull(vms, "vms");
+        this.vmFactory = Objects.requireNonNull(vmFactory, "vmFactory");
         this.bootChunk = Objects.requireNonNull(bootChunk, "bootChunk");
         this.bootChunkName = Objects.requireNonNull(bootChunkName, "bootChunkName");
         this.signalQueueCapacity = signalQueueCapacity;
@@ -97,12 +89,10 @@ public final class Machine {
     }
 
     /**
-     * Hands the machine an event. Returns {@code false} when the machine is
-     * off or the queue is full - deliberately NOT an exception, unlike
-     * {@link #signalQueue()}: a key pressed at a stopped computer is a normal
-     * occurrence the emitter shrugs at, not a caller bug. Same asymmetry as
-     * Arguments' indexing, for the same reason - who produced the case decides
-     * how it is reported.
+     * Hands the machine an event. Returns {@code false} when the machine is off
+     * or the queue is full, where {@link #signalQueue()} throws: a key pressed
+     * at a stopped computer is the emitter's normal life, asking a stopped
+     * machine for its queue is a caller bug.
      */
     public boolean pushSignal(Signal signal) {
         if (run == null) {
@@ -130,7 +120,13 @@ public final class Machine {
         if (run != null) {
             return;
         }
-        Vm vm = vms.get();
+        // Built before the VM, which cannot be constructed without them. What
+        // waits for the load is the assignment of run, not these two lines: a
+        // boot script that does not compile must leave the machine off.
+        CallQueue queue = new CallQueue();
+        SignalQueue signals = new SignalQueue(signalQueueCapacity);
+
+        Vm vm = vmFactory.create(new RunAccess(queue, signals, componentBus));
         vm.load(bootChunk, bootChunkName);
 
         // Daemon: a Lua thread that outlives its machine must never be the
@@ -139,15 +135,13 @@ public final class Machine {
             try {
                 vm.run();
             } catch (VmException e) {
-                // Already reported to the script's own output channel, which is
-                // where the player will read it. Rethrowing would reach nothing
-                // but the JVM's default handler. Note the exact type: a bug of
-                // OURS still escapes and is still loud - the same split as
-                // ComponentException against everything else, one layer up.
+                // Already on the script's output channel, where the player
+                // reads it. Note the exact type: a bug of ours is not a
+                // VmException, so it still escapes and is still loud.
             }
         }, "mcomputer-lua");
         luaThread.setDaemon(true);
-        run = new Run(new CallQueue(), new SignalQueue(signalQueueCapacity), luaThread);
+        run = new Run(queue, signals, luaThread);
         luaThread.start();
     }
 
@@ -155,10 +149,10 @@ public final class Machine {
         if (run == null) {
             return;
         }
-        // Order matters: the shutdown releases a thread parked in submit() with
-        // its error, the interrupt reaches one that is spinning. Deliberately no
-        // join - this runs on the server thread, and waiting for a script here
-        // would put an arbitrary script's timing inside the tick.
+        // Order matters: the shutdown releases a thread parked in submit(), the
+        // interrupt reaches one that is spinning. No join - this runs on the
+        // server thread, and waiting for a script here would put its timing
+        // inside the tick.
         run.queue().shutdown();
         run.luaThread().interrupt();
         run = null;
@@ -169,8 +163,7 @@ public final class Machine {
             return;
         }
         if (!run.luaThread().isAlive()) {
-            // The run is over, well or badly. stop() is safe on a dead thread:
-            // the shutdown releases nobody and the interrupt reaches no one.
+            // The run is over, well or badly. stop() is safe on a dead thread.
             stop();
             return;
         }

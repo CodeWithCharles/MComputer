@@ -1,20 +1,18 @@
 package io.github.codewithcharles.mcomputer.core.vm;
 
+/**
+ * A Lua VM, seen from a layer that may not name LuaJ. Also the seam
+ * {@code MachineTest} drives a whole boot sequence through.
+ */
 public interface Vm {
 
     /**
      * Compiles a chunk and holds it, ready to run.
      *
-     * <p>Separate from {@link #run()} for one reason, and it is about threads
-     * rather than about ergonomics: a script that does not compile must stop the
-     * machine from starting at all, and at that moment the Lua thread does not
-     * exist yet. So this runs on the <b>server thread</b>, inside
-     * {@code Machine.start()}, and its failure is synchronous - the machine is
-     * simply never turned on.
-     *
-     * <p>The cost is accepted and named: compiling happens inside a tick. It is
-     * microseconds for any plausible script, and a cap on source size is already
-     * carried as an open question rather than guessed at now.
+     * <p>Separate from {@link #run()} because of threads: a script that does not
+     * compile has to stop the machine from starting at all, and at that moment
+     * the Lua thread does not exist. So this runs on the server thread, inside
+     * {@code Machine.start()}, and its failure is synchronous.
      *
      * @param chunk     the source, as bytes - a Lua source file is not text
      * @param chunkName what error messages call it, e.g. {@code boot.lua}
@@ -23,13 +21,10 @@ public interface Vm {
     void load(byte[] chunk, String chunkName);
 
     /**
-     * Runs the loaded chunk to completion on the calling thread.
+     * Runs the loaded chunk to completion on the calling thread. This is the
+     * half that belongs to the Lua thread; nothing here resumes.
      *
-     * <p>This is the half that belongs to the Lua thread. It returns when the
-     * script is done; nothing here resumes.
-     *
-     * @throws IllegalStateException if no chunk was loaded - running an empty VM
-     *         is a caller bug, not a state to branch on
+     * @throws IllegalStateException if no chunk was loaded
      * @throws VmException if the script raises an error or exhausts its budget
      */
     void run();

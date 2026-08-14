@@ -6,10 +6,9 @@ import java.util.UUID;
 /**
  * An addressed component: an identity, plus what Lua can call on it.
  *
- * <p>The address is <b>given</b>, never generated here. Nothing in {@code core}
- * knows where addresses come from - the adapter layer reads it from the item
- * that backs this component, or assigns one the first time. That ignorance is
- * what lets a test hand over any UUID it likes with no game running.
+ * <p>The address is given, never generated here. {@code core} does not know
+ * where addresses come from, which is what lets a test hand over any UUID with
+ * no game running.
  */
 public record Component(UUID address, ComponentApi api) {
 

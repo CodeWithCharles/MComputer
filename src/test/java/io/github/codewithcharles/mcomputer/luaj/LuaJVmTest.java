@@ -1,5 +1,9 @@
 package io.github.codewithcharles.mcomputer.luaj;
 
+import io.github.codewithcharles.mcomputer.core.component.BoundaryLimits;
+import io.github.codewithcharles.mcomputer.core.component.ComponentException;
+import io.github.codewithcharles.mcomputer.core.machine.MachineAccess;
+import io.github.codewithcharles.mcomputer.core.machine.Signal;
 import io.github.codewithcharles.mcomputer.core.vm.VmException;
 import io.github.codewithcharles.mcomputer.core.vm.VmOutput;
 import org.junit.jupiter.api.Test;
@@ -10,7 +14,9 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 
 public class LuaJVmTest {
@@ -24,9 +30,14 @@ public class LuaJVmTest {
 
     private static final String CHUNK_NAME = "boot.lua";
 
+    private static final String ADDRESS = "11111111-2222-3333-4444-555555555555";
+
     private final List<byte[]> _written = new ArrayList<>();
 
-    private final LuaJVm _vm = new LuaJVm(_written::add, SOME_BUDGET);
+    private final FakeMachine _machine = new FakeMachine();
+
+    private final LuaJVm _vm =
+            new LuaJVm(_written::add, SOME_BUDGET, _machine, BoundaryLimits.defaults());
 
     /**
      * Asserts on the exact type, never on {@code RuntimeException}: while a body
@@ -46,6 +57,69 @@ public class LuaJVmTest {
     private void runSource(String source) {
         _vm.load(source.getBytes(UTF_8), CHUNK_NAME);
         _vm.run();
+    }
+
+    private LuaJVm vm(int instructionBudget) {
+        return new LuaJVm(_written::add, instructionBudget, _machine, BoundaryLimits.defaults());
+    }
+
+    /**
+     * The machine this VM talks to, and the reason the Lua face is testable
+     * here at all. A real RunAccess would need a CallQueue and a thread
+     * draining it, so every assertion in this suite would become a concurrency
+     * assertion - which is what the port was introduced to avoid.
+     *
+     * <p>Two overrides drop the {@code throws InterruptedException} they are
+     * allowed to drop, which says in the signature that they cannot block.
+     */
+    private static final class FakeMachine implements MachineAccess {
+        final Map<String, byte[]> components = new LinkedHashMap<>();
+        final List<Object[]> calls = new ArrayList<>();
+        Object[] result = new Object[0];
+        RuntimeException failure;
+        Signal next;
+        boolean interruptOnPull;
+        boolean pulledWithoutTimeout;
+        long lastTimeoutMillis = Long.MIN_VALUE;
+        boolean interruptOnInvoke;
+
+        @Override
+        public Map<String, byte[]> listComponents() {
+            return components;
+        }
+
+        @Override
+        public Object[] invoke(String address, String methodName, Object[] arguments)
+                throws InterruptedException
+        {
+            calls.add(new Object[] { address, methodName, arguments });
+            if (interruptOnInvoke) {
+                throw new InterruptedException();
+            }
+            if (failure != null) {
+                throw failure;
+            }
+            return result;
+        }
+
+        @Override
+        public Signal pullSignal() throws InterruptedException {
+            pulledWithoutTimeout = true;
+            return pulled();
+        }
+
+        @Override
+        public Signal pullSignal(long timeoutMillis) throws InterruptedException {
+            lastTimeoutMillis = timeoutMillis;
+            return pulled();
+        }
+
+        private Signal pulled() throws InterruptedException {
+            if (interruptOnPull) {
+                throw new InterruptedException();
+            }
+            return next;
+        }
     }
 
     /**
@@ -202,7 +276,7 @@ public class LuaJVmTest {
      */
     @Test
     public void anEndlessLoopExhaustsTheBudget() {
-        LuaJVm vm = new LuaJVm(_written::add, 1_000);
+        LuaJVm vm = vm(1_000);
         vm.load("while true do end".getBytes(UTF_8), CHUNK_NAME);
 
         VmException thrown = assertTimeoutPreemptively(Duration.ofSeconds(5),
@@ -222,7 +296,7 @@ public class LuaJVmTest {
      */
     @Test
     public void aScriptCannotSwallowTheBudgetWithPcall() {
-        LuaJVm vm = new LuaJVm(_written::add, 1_000);
+        LuaJVm vm = vm(1_000);
         vm.load("while true do pcall(function() while true do end end) end"
                 .getBytes(UTF_8), CHUNK_NAME);
 
@@ -242,7 +316,7 @@ public class LuaJVmTest {
      */
     @Test
     public void anInterruptedScriptStopsWithoutFailing() throws InterruptedException {
-        LuaJVm vm = new LuaJVm(_written::add, Integer.MAX_VALUE);
+        LuaJVm vm = vm(Integer.MAX_VALUE);
         vm.load("while true do end".getBytes(UTF_8), CHUNK_NAME);
 
         AtomicReference<Throwable> failure = new AtomicReference<>();
@@ -291,5 +365,106 @@ public class LuaJVmTest {
 
         assertEquals(1, _written.size());
         assertEquals(thrown.getMessage(), new String(_written.get(0), UTF_8));
+    }
+
+    /**
+     * Asked in Lua, like every reachability assertion in this suite: what
+     * matters is what a script can read, not what the globals table holds.
+     */
+    @Test
+    public void componentListGivesWhatTheMachineHolds() {
+        _machine.components.put(ADDRESS, "gpu".getBytes(UTF_8));
+
+        runSource("local found = component.list()['" + ADDRESS + "']\n"
+                + "assert(found == 'gpu', 'got ' .. tostring(found))");
+    }
+
+    @Test
+    public void componentInvokeForwardsTheAddressTheMethodAndTheArguments() {
+        runSource("component.invoke('" + ADDRESS + "', 'set', 1, 'x')");
+
+        Object[] call = _machine.calls.get(0);
+        assertEquals(ADDRESS, call[0]);
+        assertEquals("set", call[1]);
+        assertArrayEquals(new Object[] { 1.0, "x".getBytes(UTF_8) }, (Object[]) call[2]);
+    }
+
+    /**
+     * Several return values, which is why ComponentMethod has returned an array
+     * since the first day. A face collapsing them to one would pass every other
+     * test here.
+     */
+    @Test
+    public void componentInvokeGivesEveryReturnValueBackToLua() {
+        _machine.result = new Object[] { 42.0, Boolean.TRUE };
+
+        runSource("local a, b = component.invoke('" + ADDRESS + "', 'ping')\n"
+                + "assert(a == 42 and b == true, 'got ' .. tostring(a) .. ' ' .. tostring(b))");
+    }
+
+    /**
+     * The script-error half of the split, and its shape was measured rather
+     * than assumed: LuaJ wraps any RuntimeException a Java function throws into
+     * a LuaError reading "vm error: &lt;java class&gt;: ...". Left on that path a
+     * ComponentException would show a player the name of one of our classes.
+     *
+     * <p>The pcall is not decoration. Milestone 5 rests on a shell surviving a
+     * user script that calls a component badly, and this is where that becomes
+     * true rather than hoped for.
+     */
+    @Test
+    public void aComponentErrorReachesTheScriptAsAnOrdinaryLuaError() {
+        _machine.failure = new ComponentException(
+                "bad argument #1 to 'set' (string expected, got number)");
+
+        runSource("local ok, err = pcall(component.invoke, '" + ADDRESS + "', 'set')\n"
+                + "assert(ok == false, 'the bad call did not fail')\n"
+                + "print(err)");
+
+        String shown = new String(_written.get(0), UTF_8);
+        assertTrue(shown.contains("bad argument #1 to 'set' (string expected, got number)"),
+                "message was: " + shown);
+        assertFalse(shown.contains("ComponentException"), "message was: " + shown);
+    }
+
+    /**
+     * The other half, and the one measurement rewrote. Our own fault has to
+     * leave as itself, so that Machine's thread body - which catches
+     * VmException and only that - lets it reach the JVM's default handler.
+     *
+     * <p>The source wraps the call in a pcall on purpose: proving it escapes
+     * one proves it escapes a bare call too, and it is the same property the
+     * budget test above relies on.
+     */
+    @Test
+    public void aBugInTheHostIsNotReportedAsTheScriptsFault() {
+        IllegalStateException boom = new IllegalStateException("boom");
+        _machine.failure = boom;
+        _vm.load(("pcall(component.invoke, '" + ADDRESS + "', 'ping')").getBytes(UTF_8), CHUNK_NAME);
+
+        assertSame(boom, assertThrows(IllegalStateException.class, _vm::run));
+    }
+
+    /**
+     * The interrupt-to-Stopped translation on the component path, for the same
+     * measured reason as the hook's: pcall catches java.lang.Exception, so an
+     * InterruptedException let loose would be swallowed and a machine asked to
+     * stop would carry on.
+     *
+     * <p>Thread.interrupted() rather than isInterrupted(): it asserts and
+     * clears in one call, and the flag must not be left standing on the JUnit
+     * thread, where the next test's hook would read it.
+     */
+    @Test
+    public void anInterruptDuringAComponentCallStopsTheRunWithoutFailing() {
+        _machine.interruptOnInvoke = true;
+        _vm.load(("pcall(component.invoke, '" + ADDRESS + "', 'ping')\nprint('still running')")
+                .getBytes(UTF_8), CHUNK_NAME);
+
+        assertDoesNotThrow(_vm::run);
+        boolean flagWasPutBack = Thread.interrupted();
+
+        assertTrue(_written.isEmpty(), "the script kept running after being stopped");
+        assertTrue(flagWasPutBack, "the interrupt flag was not put back");
     }
 }

@@ -5,35 +5,30 @@ import java.util.Arrays;
 /**
  * A fixed-size grid of bytes, one byte per cell.
  *
- * <p>A cell holds a raw byte and never a decoded character. A script's output
- * is a sequence of bytes, and no decoding rule can be both total and honest at
- * this layer: the accessor cannot refuse a byte the way {@code checkText} can
- * refuse an argument, because a script printing a stray byte must not die.
- * Mapping a byte to a glyph belongs to the renderer, at the far end.
+ * <p>A cell holds a raw byte, never a decoded character. No decoding rule can
+ * be both total and honest here: this accessor cannot refuse a byte the way
+ * {@code checkText} refuses an argument, because a script printing a stray byte
+ * must not die. Mapping a byte to a glyph belongs to the renderer.
  *
- * <p>Exactly one byte is <b>read</b> rather than stored: {@code '\n'} ends a
- * line. That is not a decoding rule sneaking back in - ASCII, Latin-1, CP437 and
- * UTF-8 agree on it, so nothing here chooses an encoding - and this grid is a
- * terminal's storage rather than a framebuffer: it already owns wrapping,
- * advancing and scrolling, and a line break is of that family. <b>The list is
- * closed at that one byte.</b> {@code '\t'}, {@code '\r'} and every other
- * control byte are stored and will be drawn as glyphs. Widening it is a
- * decision, not a fix.
+ * <p>Exactly one byte is read rather than stored: {@code '\n'} ends a line.
+ * ASCII, Latin-1, CP437 and UTF-8 all agree on it, so nothing here chooses an
+ * encoding, and this grid is a terminal's storage rather than a framebuffer -
+ * it already owns wrapping, advancing and scrolling. <b>The list is closed at
+ * that one byte.</b> {@code '\t'}, {@code '\r'} and the rest are stored and
+ * drawn as glyphs.
  *
  * <p>Cells carry no colour. Nothing can set one until a graphics component
  * exists.
  *
- * <p>Not synchronised, and it is the adapter's job to keep that true. A script's
- * output does <b>not</b> reach this class on the server thread: {@code print}
- * calls the sink from the Lua thread, and a compile failure calls it from the
- * server thread inside {@code Machine.start()}. The adapter therefore parks
- * lines in a thread-safe queue and drains them here on the tick. Every method
- * below assumes a single thread and nothing enforces it.
+ * <p>Not synchronised, and the adapter keeps that true. A script's output does
+ * not reach this class on one thread: {@code print} calls the sink from the Lua
+ * thread, a compile failure from the server thread inside
+ * {@code Machine.start()}. The adapter parks lines in a thread-safe queue and
+ * drains them here on the tick.
  *
  * <p>Invariant: every row at or below the write position is blank. It holds by
  * construction, by {@link #clear()} and by scrolling, and it is what lets
- * {@link #writeLine} leave the tail of a short line alone instead of blanking
- * it explicitly.
+ * {@link #writeLine} leave the tail of a short line alone.
  */
 public final class ScreenBuffer {
 
@@ -65,7 +60,6 @@ public final class ScreenBuffer {
 
     public int width() {
         return width;
-
     }
 
     public int height() {
@@ -76,8 +70,7 @@ public final class ScreenBuffer {
      * The byte displayed at a cell.
      *
      * @throws IndexOutOfBoundsException if the cell is outside the grid. Asking
-     *         for a cell that does not exist is a caller bug, not a state to
-     *         branch on.
+     *         for a cell that does not exist is a caller bug.
      */
     public byte byteAt(int column, int row) {
         if (column < 0 || column >= width || row < 0 || row >= height) {
@@ -90,14 +83,11 @@ public final class ScreenBuffer {
     /**
      * Writes one line, then advances. A segment longer than {@link #width()}
      * wraps onto the following rows rather than being truncated. When the last
-     * row is full the whole grid scrolls up by one and the bottom row is
-     * blanked.
+     * row is full the grid scrolls up by one and the bottom row is blanked.
      *
-     * <p>{@code '\n'} ends a line and is not stored. It <b>separates</b> rather
-     * than terminates, so {@code "ab\n"} leaves a blank row below {@code ab}:
-     * our own {@code print} already supplies a line end, and real Lua's
-     * {@code print("a\n")} does output a blank line. No other byte is read - the
-     * class javadoc carries the closed list.
+     * <p>{@code '\n'} ends a line and is not stored. It separates rather than
+     * terminates, so {@code "ab\n"} leaves a blank row below {@code ab}, which
+     * is what real Lua's {@code print("a\n")} produces. No other byte is read.
      *
      * @param line the raw bytes of the line, with no terminator of its own
      */
@@ -114,9 +104,8 @@ public final class ScreenBuffer {
 
     /**
      * Lays one segment out from the write position, wrapping and scrolling as
-     * needed. The overflow check is <b>inside</b> the loop and not in front of
-     * it: seven bytes at the bottom of a full five-wide grid scroll twice within
-     * one call, which is what aLineThatWrapsPastTheBottomScrollsMidWrite forces.
+     * needed. The overflow check is inside the loop, not in front of it: seven
+     * bytes at the bottom of a full five-wide grid scroll twice in one call.
      */
     private void writeSegment(byte[] line, int offset, int length) {
         int written = 0;
@@ -143,18 +132,15 @@ public final class ScreenBuffer {
         nextRow = 0;
     }
 
-    /**
-     * @return a copy of the array itself
-     */
+    /** @return a copy of the array itself */
     public byte[] snapshot() {
         return cells.clone();
     }
 
     /**
-     * The row the next line lands on. It ranges over 0 to {@link #height()}
-     * <b>inclusive</b>: {@code height} is the legitimate state "the next write
-     * scrolls first", which lazy scrolling makes ordinary rather than
-     * exceptional.
+     * The row the next line lands on. Ranges over 0 to {@link #height()}
+     * inclusive: {@code height} is the ordinary state "the next write scrolls
+     * first", which lazy scrolling makes normal.
      */
     public int writePosition() {
         return nextRow;
@@ -163,10 +149,10 @@ public final class ScreenBuffer {
     /**
      * Replaces every cell and the write position at once.
      *
-     * <p>The position is not optional and does not default. Restoring a full
-     * grid while leaving the position at zero yields a buffer whose rows below
-     * that position are not blank - this class's one invariant, broken by
-     * construction, on an object nothing else would ever flag as invalid.
+     * <p>The position is not optional. Restoring a full grid while leaving the
+     * position at zero yields a buffer whose rows below it are not blank - this
+     * class's one invariant, broken by construction, on an object nothing would
+     * flag as invalid.
      *
      * @param cells         exactly {@code width * height} bytes, row-major
      * @param writePosition where the next line lands, 0 to {@link #height()}

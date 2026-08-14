@@ -5,12 +5,12 @@ import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Signals waiting to be pulled by the machine's script.
+ * Signals waiting to be pulled by the machine's script. Written by the server
+ * thread, read by the Lua thread blocked in {@code pullSignal}.
  *
- * <p>Written by the server thread, read by the Lua thread blocked in
- * {@code pullSignal}. Bounded: a full queue refuses the INCOMING signal -
- * the opposite of {@code ScreenOutput}, because events are consumed in
- * order and losing one mid-sequence is worse than refusing the newest.
+ * <p>Bounded, and a full queue refuses the incoming signal - the opposite of
+ * {@code ScreenOutput}, because events are consumed in order and losing one
+ * mid-sequence is worse than refusing the newest.
  */
 public final class SignalQueue {
 

@@ -9,23 +9,19 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 /**
  * What a computer's Lua side calls to reach its components: address to
- * {@link Component}, then name to method. It speaks addresses the way Lua
- * speaks them - as strings.
+ * {@link Component}, then name to method. It speaks addresses the way Lua does,
+ * as strings.
  *
- * <p><b>This is the layer that owns the {@link ComponentException} / real-bug
- * split</b>, and it owns it by not manufacturing the wrong type rather than by
- * catching one: an address a script mistyped must not reach the machine as an
- * {@code IllegalArgumentException} out of {@code UUID.fromString} and stop it as
- * if our own code were broken.
+ * <p><b>This layer owns the {@link ComponentException} / real-bug split</b>, and
+ * it owns it by not manufacturing the wrong type: an address a script mistyped
+ * must not arrive as an {@code IllegalArgumentException} out of
+ * {@code UUID.fromString} and stop the machine as if our own code were broken.
+ * Exceptions thrown by a component method are not caught here - the layer that
+ * turns either kind into a Lua error is the one owning the LuaJ boundary.
  *
- * <p>Conversely, exceptions thrown by a component method are deliberately
- * <b>not</b> caught here. A {@code ComponentException} is a script error and a
- * stray {@code NullPointerException} is ours; the layer that converts either
- * into a Lua error is the one that owns the LuaJ boundary, not this one.
- *
- * <p>Addresses are parsed and rendered in this single class, both directions.
- * Split across two, the two forms drift and {@code list()} starts handing out
- * addresses {@code invoke()} refuses.
+ * <p>Addresses are parsed and rendered in this single class. Split across two,
+ * the forms drift and {@code list()} starts handing out addresses
+ * {@code invoke()} refuses.
  */
 public final class ComponentBus {
 
@@ -54,9 +50,9 @@ public final class ComponentBus {
     }
 
     /**
-     * Backs {@code component.list()}: address to type, in the shape the value
-     * boundary accepts. Keys are decoded text, values are raw bytes - the closed
-     * list for keys is not the closed list for values.
+     * Backs {@code component.list()}: address to type. Keys are decoded text,
+     * values are raw bytes - the closed list for keys is not the one for
+     * values.
      */
     public Map<String, byte[]> list() {
         Map<String, byte[]> listed = new LinkedHashMap<>();
@@ -68,9 +64,9 @@ public final class ComponentBus {
 
     /**
      * Parses and looks up in one place, so a malformed address and an unknown
-     * one produce the same message: from the script's side both mean "this
-     * resolves to nothing here". The address is echoed <b>verbatim</b>, never
-     * re-rendered from a parsed UUID - that would come back lowercased and read
+     * one give the same message: from the script's side both mean "this
+     * resolves to nothing here". The address is echoed verbatim, never
+     * re-rendered from a parsed UUID, which would come back lowercased and read
      * as a different component to whoever typed it in capitals.
      */
     private Component resolve(String address) {

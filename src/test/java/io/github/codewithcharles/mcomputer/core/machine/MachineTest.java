@@ -52,6 +52,9 @@ class MachineTest {
         volatile Thread ranOn;
         volatile boolean interrupted;
         boolean blockUntilInterrupted;
+        boolean pullUntilSignal;
+        volatile MachineAccess access;
+        volatile Signal pulled;
 
         @Override
         public void load(byte[] chunk, String chunkName) {
@@ -69,6 +72,14 @@ class MachineTest {
             if (failOnRun != null) {
                 throw failOnRun;
             }
+            if (pullUntilSignal) {
+                try {
+                    pulled = access.pullSignal();
+                } catch (InterruptedException e) {
+                    interrupted = true;
+                }
+                return;
+            }
             if (!blockUntilInterrupted) {
                 return;
             }
@@ -83,16 +94,19 @@ class MachineTest {
         }
     }
 
-    private static final class Vms implements Supplier<Vm> {
+    private static final class Vms implements VmFactory {
         final List<FakeVm> produced = new ArrayList<>();
         VmException failOnLoad;
         volatile VmException failOnRun;
         boolean blockUntilInterrupted;
+        boolean pullUntilSignal;
 
         @Override
-        public Vm get() {
+        public Vm create(MachineAccess access) {
             FakeVm vm = new FakeVm();
+            vm.access = access;
             vm.blockUntilInterrupted = blockUntilInterrupted;
+            vm.pullUntilSignal = pullUntilSignal;
             vm.failOnLoad = failOnLoad;
             vm.failOnRun = failOnRun;
             produced.add(vm);
@@ -447,5 +461,31 @@ class MachineTest {
 
         assertEquals(1, machine.componentBus().list().size());
         machine.stop();
+    }
+
+    /**
+     * The access handed to the VM has to be wired to the queues the run
+     * actually uses. A start() that built fresh ones for the RunAccess passes
+     * every other test in this suite, and what a player would see is a script
+     * blocked forever on a queue nobody writes to, with nothing in the log.
+     *
+     * <p>No precondition on the Lua thread being parked: the push lands either
+     * before the pull or while it waits, and both give the signal back. What
+     * discriminates is the bounded join, which only the right queue satisfies.
+     */
+    @Test
+    void theVmPullsFromTheRunsOwnSignalQueue() throws InterruptedException {
+        Machine machine = machine(MAX_TASKS);
+        _vms.pullUntilSignal = true;
+        machine.start();
+        FakeVm vm = _vms.produced.get(0);
+        assertTrue(vm.started.await(2, TimeUnit.SECONDS), "the script never ran");
+
+        Signal pushed = signal("key_down");
+        assertTrue(machine.pushSignal(pushed));
+
+        vm.ranOn.join(Duration.ofSeconds(2).toMillis());
+        assertFalse(vm.ranOn.isAlive(), "the Lua thread never returned");
+        assertSame(pushed, vm.pulled);
     }
 }
