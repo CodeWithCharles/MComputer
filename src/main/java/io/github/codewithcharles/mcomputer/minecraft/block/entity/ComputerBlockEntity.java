@@ -5,6 +5,10 @@ import io.github.codewithcharles.mcomputer.MComputer;
 import io.github.codewithcharles.mcomputer.core.component.BoundaryLimits;
 import io.github.codewithcharles.mcomputer.core.component.Component;
 import io.github.codewithcharles.mcomputer.core.component.ComponentApi;
+import io.github.codewithcharles.mcomputer.core.component.ComponentException;
+import io.github.codewithcharles.mcomputer.core.fs.DiskImage;
+import io.github.codewithcharles.mcomputer.core.fs.Filesystem;
+import io.github.codewithcharles.mcomputer.core.machine.InstructionBudget;
 import io.github.codewithcharles.mcomputer.core.machine.Machine;
 import io.github.codewithcharles.mcomputer.core.machine.Signal;
 import io.github.codewithcharles.mcomputer.core.screen.Gpu;
@@ -35,26 +39,40 @@ public class ComputerBlockEntity extends BlockEntity {
 
     private static final int SIGNAL_QUEUE_CAPACITY = 256;
 
-    /** TODO: a guess, like MAX_TASKS_PER_TICK. */
-    private static final int INSTRUCTION_BUDGET = 5_000_000;
+    /** TODO: a guess. Per CPU tier at milestone 6. */
+    private static final int INSTRUCTIONS_PER_TICK = 20_000;
 
-//    private static final byte[] BOOT_SCRIPT = """
-//            local gpu
-//            for address, kind in pairs(component.list()) do
-//                if kind == 'gpu' then gpu = address end
-//            end
-//            print('gpu at ' .. gpu)
-//            local width, height = component.invoke(gpu, 'getResolution')
-//            print('resolution ' .. width .. 'x' .. height)
-//            component.invoke(gpu, 'set', 1, 5, 'written by the gpu')
-//            print(done)
-//            """.getBytes(StandardCharsets.UTF_8);
+    /** Tier one, in bytes. */
+    private static final long DISK_CAPACITY = 1024 * 1024;
+
+    private static final long DISK_ENTRY_COST = 512;
+
+    private static final int MAX_OPEN_FILES = 16;
+
+    private static final String SHELL = "/assets/mcomputer/lua/shell.lua";
+    private static final String SHELL_PATH = "/boot.lua";
+
     private static final byte[] BOOT_SCRIPT = """
-            print('type something')
-            while true do
-                local name, address, character, code = computer.pullSignal()
-                print(name .. ' char=' .. character .. ' code=' .. code)
+            local fs
+            for address, kind in pairs(component.list()) do
+                if kind == 'filesystem' then fs = address end
             end
+            local handle = component.invoke(fs, 'open', '/boot.lua', 'r')
+            local source = ''
+            while true do
+                local piece = component.invoke(fs, 'read', handle, 2048)
+                if piece == nil then break end
+                source = source .. piece
+            end
+            component.invoke(fs, 'close', handle)
+            local chunk, why = load(source, 'boot.lua')
+            if not chunk then
+                -- print and not gpu.write: a failure's audience is the player,
+                -- which is the channel this one was built for.
+                print(why)
+                return
+            end
+            chunk()
             """.getBytes(StandardCharsets.UTF_8);
 
     private static final int SCREEN_WIDTH = 80;
@@ -88,10 +106,11 @@ public class ComputerBlockEntity extends BlockEntity {
      */
     private final Machine machine = new Machine(
             MAX_TASKS_PER_TICK,
-            access -> new LuaJVm(screenOutput, INSTRUCTION_BUDGET, access, BoundaryLimits.defaults()),
+            (access, budget) -> new LuaJVm(screenOutput, budget, access, BoundaryLimits.defaults()),
             BOOT_SCRIPT,
-            "boot.lua",
-            SIGNAL_QUEUE_CAPACITY);
+            "loader",
+            SIGNAL_QUEUE_CAPACITY,
+            new InstructionBudget(INSTRUCTIONS_PER_TICK));
 
     /**
      * The keyboard is built into the block. It has an address and no methods -

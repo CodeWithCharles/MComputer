@@ -17,5 +17,5 @@ import io.github.codewithcharles.mcomputer.core.vm.Vm;
 @FunctionalInterface
 public interface VmFactory {
 
-    Vm create(MachineAccess access);
+    Vm create(MachineAccess access, InstructionBudget budget);
 }

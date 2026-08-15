@@ -23,6 +23,7 @@ class MachineTest {
     private static final int MAX_TASKS = 8;
     private static final int SIGNAL_CAPACITY = 8;
     private static final byte[] BOOT = "print('hi')".getBytes(StandardCharsets.UTF_8);
+    private static final int PER_TICK = 1_000;
 
     private final Vms _vms = new Vms();
 
@@ -55,6 +56,7 @@ class MachineTest {
         boolean pullUntilSignal;
         volatile MachineAccess access;
         volatile Signal pulled;
+        InstructionBudget budget;
 
         @Override
         public void load(byte[] chunk, String chunkName) {
@@ -102,9 +104,10 @@ class MachineTest {
         boolean pullUntilSignal;
 
         @Override
-        public Vm create(MachineAccess access) {
+        public Vm create(MachineAccess access, InstructionBudget budget) {
             FakeVm vm = new FakeVm();
             vm.access = access;
+            vm.budget = budget;
             vm.blockUntilInterrupted = blockUntilInterrupted;
             vm.pullUntilSignal = pullUntilSignal;
             vm.failOnLoad = failOnLoad;
@@ -147,7 +150,8 @@ class MachineTest {
     }
 
     private Machine machine(int maxTasks) {
-        return new Machine(maxTasks, _vms, BOOT, "boot.lua", SIGNAL_CAPACITY);
+        return new Machine(maxTasks, _vms, BOOT, "boot.lua", SIGNAL_CAPACITY,
+                new InstructionBudget(PER_TICK));
     }
 
     private static Signal signal(String name) {
@@ -406,7 +410,8 @@ class MachineTest {
      */
     @Test
     void theSignalQueueCapacityIsTheConstructorsNumber() throws InterruptedException {
-        Machine machine = new Machine(MAX_TASKS, _vms, BOOT, "boot.lua", 1);
+        Machine machine = new Machine(MAX_TASKS, _vms, BOOT, "boot.lua", 1,
+                new InstructionBudget(PER_TICK));
         _vms.blockUntilInterrupted = true;
         machine.start();
 
@@ -487,5 +492,36 @@ class MachineTest {
         vm.ranOn.join(Duration.ofSeconds(2).toMillis());
         assertFalse(vm.ranOn.isAlive(), "the Lua thread never returned");
         assertSame(pushed, vm.pulled);
+    }
+
+    /** A factory that drops the parameter passes every other test here. */
+    @Test
+    void theVmIsGivenTheMachinesBudget() {
+        InstructionBudget budget = new InstructionBudget(PER_TICK);
+        Machine machine = new Machine(MAX_TASKS, _vms, BOOT, "boot.lua", SIGNAL_CAPACITY, budget);
+        _vms.blockUntilInterrupted = true;
+        machine.start();
+
+        assertSame(budget, _vms.produced.get(0).budget);
+        machine.stop();
+    }
+
+    /**
+     * Nothing else in this suite calls grant(), so a tick that forgets it turns
+     * the rate back into a total with a smaller number and everything stays
+     * green.
+     */
+    @Test
+    void theTickGrantsTheBudget() throws InterruptedException {
+        InstructionBudget budget = new InstructionBudget(PER_TICK);
+        Machine machine = new Machine(MAX_TASKS, _vms, BOOT, "boot.lua", SIGNAL_CAPACITY, budget);
+        _vms.blockUntilInterrupted = true;
+        machine.start();
+        budget.spend(PER_TICK);
+
+        machine.tick();
+
+        assertTimeoutPreemptively(Duration.ofSeconds(2), () -> budget.spend(1));
+        machine.stop();
     }
 }

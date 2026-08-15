@@ -41,6 +41,7 @@ public final class Machine {
      */
     private final ComponentRegistry components = new ComponentRegistry();
     private final ComponentBus componentBus = new ComponentBus(components);
+    private final InstructionBudget budget;
 
     /**
      * Everything that belongs to one run and dies with it. Three nullable
@@ -61,19 +62,23 @@ public final class Machine {
      * @param bootChunk       the script this computer runs, as bytes
      * @param bootChunkName   what its error messages call it
      * @param signalQueueCapacity bound of the per-run signal queue
+     * @param budget how fast this computer's processor runs. Hardware, so it
+     *               belongs to the machine and survives a reboot.
      */
     public Machine(
             int maxTasksPerTick,
             VmFactory vmFactory,
             byte[] bootChunk,
             String bootChunkName,
-            int signalQueueCapacity)
+            int signalQueueCapacity,
+            InstructionBudget budget)
     {
         this.maxTasksPerTick = maxTasksPerTick;
         this.vmFactory = Objects.requireNonNull(vmFactory, "vmFactory");
         this.bootChunk = Objects.requireNonNull(bootChunk, "bootChunk");
         this.bootChunkName = Objects.requireNonNull(bootChunkName, "bootChunkName");
         this.signalQueueCapacity = signalQueueCapacity;
+        this.budget = Objects.requireNonNull(budget, "budget");
     }
 
     public boolean isRunning() {
@@ -125,7 +130,7 @@ public final class Machine {
         CallQueue queue = new CallQueue();
         SignalQueue signals = new SignalQueue(signalQueueCapacity);
 
-        Vm vm = vmFactory.create(new RunAccess(queue, signals, componentBus));
+        Vm vm = vmFactory.create(new RunAccess(queue, signals, componentBus), budget);
         vm.load(bootChunk, bootChunkName);
 
         // Daemon: a Lua thread that outlives its machine must never be the
@@ -166,6 +171,7 @@ public final class Machine {
             stop();
             return;
         }
+        budget.grant();
         run.queue().drain(maxTasksPerTick);
     }
 }

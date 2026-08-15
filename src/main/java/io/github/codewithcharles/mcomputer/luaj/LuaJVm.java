@@ -5,6 +5,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Objects;
 
 import io.github.codewithcharles.mcomputer.core.component.BoundaryLimits;
+import io.github.codewithcharles.mcomputer.core.machine.InstructionBudget;
 import io.github.codewithcharles.mcomputer.core.machine.MachineAccess;
 import org.luaj.vm2.*;
 import org.luaj.vm2.compiler.LuaC;
@@ -49,34 +50,28 @@ public final class LuaJVm implements Vm {
     private static final int INSTRUCTIONS_PER_CHECK = 1_000;
 
     private final VmOutput output;
-    private final int instructionBudget;
     private final Globals globals;
     private final LuaValue setHook;
     private final LuaValue baseLoad;
+    private final InstructionBudget budget;
     private LuaValue loaded;
     private String chunkName;
-    private int remaining;
 
     /**
      * @param output            where the script's output goes
-     * @param instructionBudget how many Lua instructions this run may execute
-     *                          before it is killed. Injected so a test can set
-     *                          a ceiling of a thousand.
+     * @param budget            how many instructions this computer may run per
+     *                          tick. Injected so a test can set a thousand.
      * @param machine           what the script may do to its own computer
      * @param limits            how much structure one value may carry across
      */
     public LuaJVm(
             VmOutput output,
-            int instructionBudget,
+            InstructionBudget budget,
             MachineAccess machine,
             BoundaryLimits limits)
     {
         this.output = Objects.requireNonNull(output, "output");
-        if (instructionBudget <= 0) {
-            throw new IllegalArgumentException(
-                    "instructionBudget must be > 0, got " + instructionBudget);
-        }
-        this.instructionBudget = instructionBudget;
+        this.budget = Objects.requireNonNull(budget, "budget");
 
         this.globals = new Globals();
         LuaC.install(this.globals);
@@ -143,7 +138,6 @@ public final class LuaJVm implements Vm {
         if (loaded == null) {
             throw new IllegalStateException("nothing loaded");
         }
-        remaining = instructionBudget;
         setHook.invoke(LuaValue.varargsOf(new LuaValue[] {
                 new Hook(), LuaValue.EMPTYSTRING, LuaValue.valueOf(INSTRUCTIONS_PER_CHECK) }));
         try {
@@ -157,9 +151,6 @@ public final class LuaJVm implements Vm {
             // actually broken. Machine's thread body catches VmException and
             // only that, so this stays loud.
             throw (RuntimeException) ours.getCause();
-        } catch (BudgetExhausted e) {
-            throw failure(
-                    chunkName + ": instruction budget exhausted (" + instructionBudget + ")", e);
         } catch (LuaError e) {
             throw failure(e.getMessage(), e);
         }
@@ -237,21 +228,16 @@ public final class LuaJVm implements Vm {
     private final class Load extends VarArgFunction {
         @Override
         public Varargs invoke(Varargs args) {
-            return baseLoad.invoke(LuaValue.varargsOf(new LuaValue[] {
-                    args.arg(1), args.arg(2), LuaValue.valueOf(TEXT_SOURCE_ONLY), args.arg(4) }));
-        }
-    }
-
-    /**
-     * The budget's trigger. An {@link Error} for the reason {@link Stopped}
-     * gives: a hook raising anything else is swallowed by
-     * {@code while true do pcall(function() while true do end end) end}, and
-     * the budget is defeated while looking installed.
-     */
-    private static final class BudgetExhausted extends Error {
-        BudgetExhausted() {
-            // No stack trace: it would be the interpreter's frames.
-            super("instruction budget exhausted", null, false, false);
+            LuaValue mode = LuaValue.valueOf(TEXT_SOURCE_ONLY);
+            // The fourth argument is forwarded only when the caller gave one.
+            // BaseLib tells an absent environment from a nil one, and a nil one
+            // compiles a chunk that cannot see a single global.
+            if (args.narg() >= 4) {
+                return baseLoad.invoke(LuaValue.varargsOf(new LuaValue[] {
+                        args.arg(1), args.arg(2), mode, args.arg(4) }));
+            }
+            return baseLoad.invoke(
+                    LuaValue.varargsOf(new LuaValue[] { args.arg(1), args.arg(2), mode }));
         }
     }
 
@@ -262,9 +248,10 @@ public final class LuaJVm implements Vm {
             if (Thread.currentThread().isInterrupted()) {
                 throw new Stopped();
             }
-            remaining -= INSTRUCTIONS_PER_CHECK;
-            if (remaining <= 0) {
-                throw new BudgetExhausted();
+            try {
+                budget.spend(INSTRUCTIONS_PER_CHECK);
+            } catch (InterruptedException stopped) {
+                throw Stopped.afterInterruption();
             }
             return NIL;
         }

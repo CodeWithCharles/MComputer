@@ -2,6 +2,7 @@ package io.github.codewithcharles.mcomputer.luaj;
 
 import io.github.codewithcharles.mcomputer.core.component.BoundaryLimits;
 import io.github.codewithcharles.mcomputer.core.component.ComponentException;
+import io.github.codewithcharles.mcomputer.core.machine.InstructionBudget;
 import io.github.codewithcharles.mcomputer.core.machine.MachineAccess;
 import io.github.codewithcharles.mcomputer.core.machine.Signal;
 import io.github.codewithcharles.mcomputer.core.vm.VmException;
@@ -37,7 +38,8 @@ public class LuaJVmTest {
     private final FakeMachine _machine = new FakeMachine();
 
     private final LuaJVm _vm =
-            new LuaJVm(_written::add, SOME_BUDGET, _machine, BoundaryLimits.defaults());
+            new LuaJVm(_written::add, new InstructionBudget(SOME_BUDGET), _machine,
+                    BoundaryLimits.defaults());
 
     /**
      * Asserts on the exact type, never on {@code RuntimeException}: while a body
@@ -59,8 +61,8 @@ public class LuaJVmTest {
         _vm.run();
     }
 
-    private LuaJVm vm(int instructionBudget) {
-        return new LuaJVm(_written::add, instructionBudget, _machine, BoundaryLimits.defaults());
+    private LuaJVm vm(InstructionBudget budget) {
+        return new LuaJVm(_written::add, budget, _machine, BoundaryLimits.defaults());
     }
 
     /**
@@ -265,43 +267,52 @@ public class LuaJVmTest {
     }
 
     /**
-     * The budget is given as 1000 rather than reusing the field's million, so
-     * that the constructor argument is proven to reach the hook. Without a small
-     * value here nothing distinguishes an injected budget from a literal.
-     *
-     * <p>The timeout is liveness, not synchronisation - the same instrument as
-     * {@code join(timeout)} in CallQueueTest, and the same rule: a working budget
-     * never approaches the deadline, only a broken one waits. It has to be
-     * preemptive because a Lua loop does not return on its own.
+     * The rate made visible. What is asserted is that the thread parks rather
+     * than that the run ends, and a budget of a thousand rather than the
+     * field's million is what proves the argument reaches the hook.
      */
     @Test
-    public void anEndlessLoopExhaustsTheBudget() {
-        LuaJVm vm = vm(1_000);
+    public void anEndlessLoopParksOnTheBudget() {
+        LuaJVm vm = vm(new InstructionBudget(1_000));
         vm.load("while true do end".getBytes(UTF_8), CHUNK_NAME);
+        Thread thread = new Thread(() -> {
+            try {
+                vm.run();
+            } catch (Throwable ignored) {
+                // The interrupt below ends this thread; nothing here reads it.
+            }
+        }, "lua-under-test");
+        thread.setDaemon(true);
+        thread.start();
 
-        VmException thrown = assertTimeoutPreemptively(Duration.ofSeconds(5),
-                () -> assertThrows(VmException.class, vm::run));
+        long deadline = System.nanoTime() + Duration.ofSeconds(2).toNanos();
+        while (thread.getState() != Thread.State.WAITING && System.nanoTime() < deadline) {
+            Thread.onSpinWait();
+        }
 
-        assertTrue(thrown.getMessage().contains("budget"),
-                "message was: " + thrown.getMessage());
+        assertEquals(Thread.State.WAITING, thread.getState());
+        thread.interrupt();
     }
 
     /**
-     * The attack the Error exists for. Born green against the implementation
-     * above, so earn its red: make {@code Hook} throw
-     * {@code new LuaError("budget")} for ten seconds and watch this test hit its
-     * deadline while the two above stay green. That divergence is the whole
-     * argument, and a comment would not fail the day someone tidies the Error
-     * away.
+     * The attack the Error exists for. The hook now raises only Stopped, so
+     * this is where "pcall must not catch it" is guarded. Earn its red by
+     * making Hook throw a LuaError for ten seconds and watching it hit the
+     * deadline while its neighbours stay green.
      */
     @Test
-    public void aScriptCannotSwallowTheBudgetWithPcall() {
-        LuaJVm vm = vm(1_000);
+    public void aScriptCannotSwallowAStopWithPcall() throws InterruptedException {
+        LuaJVm vm = vm(new InstructionBudget(Integer.MAX_VALUE));
         vm.load("while true do pcall(function() while true do end end) end"
                 .getBytes(UTF_8), CHUNK_NAME);
+        Thread thread = new Thread(vm::run, "lua-under-test");
+        thread.setDaemon(true);
+        thread.start();
 
-        assertTimeoutPreemptively(Duration.ofSeconds(5),
-                () -> assertThrows(VmException.class, vm::run));
+        thread.interrupt();
+
+        thread.join(Duration.ofSeconds(5).toMillis());
+        assertFalse(thread.isAlive(), "the script swallowed its own stop");
     }
 
     /**
@@ -316,7 +327,7 @@ public class LuaJVmTest {
      */
     @Test
     public void anInterruptedScriptStopsWithoutFailing() throws InterruptedException {
-        LuaJVm vm = vm(Integer.MAX_VALUE);
+        LuaJVm vm = vm(new InstructionBudget(Integer.MAX_VALUE));
         vm.load("while true do end".getBytes(UTF_8), CHUNK_NAME);
 
         AtomicReference<Throwable> failure = new AtomicReference<>();

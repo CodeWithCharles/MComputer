@@ -40,7 +40,10 @@ public final class InstructionBudget {
      * @throws InterruptedException when the run is stopped while waiting
      */
     public synchronized void spend(int instructions) throws InterruptedException {
-        throw new UnsupportedOperationException("not implemented");
+        while (remaining <= 0) {
+            wait();
+        }
+        remaining -= instructions;
     }
 
     /**
@@ -49,6 +52,7 @@ public final class InstructionBudget {
      * burst; what a tick overspent is carried, so the average holds.
      */
     public synchronized void grant() {
-        throw new UnsupportedOperationException("not implemented");
+        remaining = Math.min(remaining, 0) + perTick;
+        notifyAll();
     }
 }
