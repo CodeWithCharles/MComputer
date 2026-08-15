@@ -1,11 +1,10 @@
 package io.github.codewithcharles.mcomputer.core.screen;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 final class ScreenBufferTest {
 
@@ -402,5 +401,26 @@ final class ScreenBufferTest {
 
         assertEquals("abcde", rowText(buffer, 0));
         assertEquals("fg   ", rowText(buffer, 1));
+    }
+
+    private static void assertMoves(ScreenBuffer buffer, Runnable mutation) {
+        long before = buffer.revision();
+        mutation.run();
+        assertTrue(buffer.revision() > before, "the revision did not move");
+    }
+
+    /**
+     * One assertion per writer. A forgotten increment is a screen the client
+     * never sees change, which is how a shell's prompt stayed invisible until
+     * the machine stopped.
+     */
+    @Test
+    void everyWriterMovesTheRevision() {
+        ScreenBuffer buffer = new ScreenBuffer(5, 2);
+
+        assertMoves(buffer, () -> buffer.writeLine(bytes("a")));
+        assertMoves(buffer, () -> buffer.set(0, 0, bytes("b")));
+        assertMoves(buffer, buffer::clear);
+        assertMoves(buffer, () -> buffer.restore(new byte[10], 0));
     }
 }

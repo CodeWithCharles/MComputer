@@ -7,10 +7,7 @@ import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
 
-import static org.junit.jupiter.api.Assertions.assertArrayEquals;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 final class GpuTest {
 
@@ -88,5 +85,38 @@ final class GpuTest {
     @Test
     void getResolutionGivesTheScreensSize() {
         assertArrayEquals(new Object[] { 5.0, 2.0 }, invoke("getResolution"));
+    }
+
+    /** Synchronous, unlike print: a shell that asks where it is must not race. */
+    @Test
+    void writeLaysALineAndAdvances() {
+        invoke("write", bytes("ab"));
+        invoke("write", bytes("cd"));
+
+        assertEquals("ab   ", rowText(_screen, 0));
+        assertEquals("cd   ", rowText(_screen, 1));
+    }
+
+    @Test
+    void theCursorIsTheOneBasedRowTheNextWriteLands() {
+        assertEquals(1.0, invoke("getCursor")[0]);
+
+        invoke("write", bytes("a"));
+
+        assertEquals(2.0, invoke("getCursor")[0]);
+    }
+
+    /**
+     * The write position may equal the height, which is the ordinary state
+     * "the next write scrolls first". Reported bare it would be a row set()
+     * refuses, so the prompt would blow up exactly when the screen fills.
+     */
+    @Test
+    void aFullScreenReportsItsLastRow() {
+        invoke("write", bytes("a"));
+        invoke("write", bytes("b"));
+
+        assertEquals(2.0, invoke("getCursor")[0]);
+        assertDoesNotThrow(() -> invoke("set", 1.0, invoke("getCursor")[0], bytes("x")));
     }
 }

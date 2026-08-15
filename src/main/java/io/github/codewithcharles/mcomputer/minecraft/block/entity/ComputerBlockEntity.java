@@ -86,6 +86,8 @@ public class ComputerBlockEntity extends BlockEntity {
      */
     private static final int MAX_PENDING_LINES = 64;
 
+    private long sentRevision;
+
     /**
      * The screen's storage. Server-side only, like the Machine: the client copy
      * of this block entity holds one nobody ever writes into.
@@ -146,10 +148,9 @@ public class ComputerBlockEntity extends BlockEntity {
         if (machine.isRunning() != wasRunning) {
             syncState();
         }
-        // Unconditional, and an isRunning() guard would be wrong: at the moment
-        // tick() notices the Lua thread is dead and stops the machine, the
-        // script's last prints and its failure line are still in the queue.
-        if (screenOutput.drain() > 0) {
+        screenOutput.drain();
+        if (screen.revision() != sentRevision) {
+            sentRevision = screen.revision();
             sendScreen();
         }
     }

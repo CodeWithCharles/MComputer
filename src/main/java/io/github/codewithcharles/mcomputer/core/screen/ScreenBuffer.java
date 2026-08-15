@@ -47,6 +47,7 @@ public final class ScreenBuffer {
     private final int height;
     private final byte[] cells;
     private int nextRow;
+    private long revision;
 
     /**
      * @param width     columns, strictly positive
@@ -70,6 +71,10 @@ public final class ScreenBuffer {
 
     public int height() {
         return height;
+    }
+
+    public long revision() {
+        return revision;
     }
 
     /**
@@ -99,6 +104,7 @@ public final class ScreenBuffer {
         requireInsideGrid(column, row);
         int fits = Math.min(bytes.length, width - column);
         System.arraycopy(bytes, 0, cells,row * width + column, fits);
+        revision++;
     }
 
     private void requireInsideGrid(int column, int row) {
@@ -130,6 +136,7 @@ public final class ScreenBuffer {
             }
         }
         writeSegment(line, start, line.length - start);
+        revision++;
     }
 
     /**
@@ -163,6 +170,7 @@ public final class ScreenBuffer {
     public void clear() {
         Arrays.fill(cells, BLANK);
         nextRow = 0;
+        revision++;
     }
 
     /** @return a copy of the array itself */
@@ -201,5 +209,6 @@ public final class ScreenBuffer {
         }
         System.arraycopy(cells, 0, this.cells, 0, cells.length);
         this.nextRow = writePosition;
+        revision++;
     }
 }

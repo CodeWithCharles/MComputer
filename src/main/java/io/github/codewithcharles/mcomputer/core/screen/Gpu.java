@@ -36,6 +36,13 @@ public final class Gpu {
                 })
                 .method("getResolution", arguments ->
                     new Object[] { (double) screen.width(), (double) screen.height() })
+                .method("write", arguments -> {
+                    screen.writeLine(arguments.checkBytes(0));
+                    return new Object[0];
+                })
+                .method("getCursor", arguments ->
+                        new Object[] { (double) Math.min(
+                                screen.writePosition() + 1, screen.height()) })
                 .build();
     }
 
