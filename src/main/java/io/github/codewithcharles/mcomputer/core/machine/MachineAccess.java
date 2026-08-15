@@ -38,8 +38,8 @@ public interface MachineAccess {
     /**
      * Backs {@code computer.pullSignal(seconds)}, the conversion being the
      * caller's - this package speaks milliseconds. Two methods rather than a
-     * sentinel: OpenComputers' default timeout is {@code math.huge}, and no
-     * millisecond value honestly means forever.
+     * sentinel: the default timeout is infinite, and no millisecond value
+     * honestly means forever.
      *
      * @return {@code null} on timeout
      */

@@ -76,9 +76,9 @@ final class GpuTest {
     }
 
     /**
-     * Guards a divergence. OpenComputers' gpu.set returns a boolean; ours
-     * returns nothing while no caller reads one, and adding a return value
-     * later breaks no Lua script.
+     * set returns nothing while no caller reads a result, and adding a return
+     * value later breaks no Lua script. Pinned so the choice gets made again
+     * rather than drifted into.
      */
     @Test
     void setReturnsNothing() {

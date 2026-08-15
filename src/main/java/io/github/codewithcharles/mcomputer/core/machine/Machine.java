@@ -60,8 +60,7 @@ public final class Machine {
      *                        plumbing
      * @param bootChunk       the script this computer runs, as bytes
      * @param bootChunkName   what its error messages call it
-     * @param signalQueueCapacity bound of the per-run signal queue. 256 is
-     *                            OpenComputers' default and minimum.
+     * @param signalQueueCapacity bound of the per-run signal queue
      */
     public Machine(
             int maxTasksPerTick,

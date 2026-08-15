@@ -12,10 +12,10 @@ import io.github.codewithcharles.mcomputer.core.component.ComponentApi;
  * What stays with the adapter is producing the component: deciding which buffer
  * belongs to which computer, and minting its address.
  *
- * <p>Coordinates are one-based, as in Lua and in OpenComputers, where
- * {@link ScreenBuffer} counts from zero. That shift lives in {@link #api} and
- * is the fourth in this project; the other three are in the converter, twice,
- * and in {@code Arguments} on the way to an error message.
+ * <p>Coordinates are one-based, as in Lua, where {@link ScreenBuffer} counts
+ * from zero. That shift lives in {@link #api} and is the fourth in this
+ * project; the other three are in the converter, twice, and in
+ * {@code Arguments} on the way to an error message.
  */
 public final class Gpu {
 

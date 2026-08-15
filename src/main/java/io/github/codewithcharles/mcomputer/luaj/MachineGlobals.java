@@ -12,9 +12,8 @@ import java.util.Objects;
 
 /**
  * The face a script sees of its own computer: the {@code component} and
- * {@code computer} tables, under the names OpenComputers made canonical.
- * {@link LuaJVm} says how a VM is composed and run; this says what it exposes,
- * and it is the half that grows.
+ * {@code computer} tables. {@link LuaJVm} says how a VM is composed and run;
+ * this says what it exposes, and it is the half that grows.
  *
  * <p><b>It owns a boundary, and not the sandbox's.</b> A
  * {@code ComponentException} is the script's fault and becomes an ordinary Lua
@@ -123,9 +122,9 @@ final class MachineGlobals {
     }
 
     /**
-     * Name first, then the values, as OpenComputers hands a signal over. The
-     * name is encoded here because it is ours, the way a failure message is; a
-     * script's own bytes are never decoded.
+     * Name first, then the values. The name is encoded here because it is
+     * ours, the way a failure message is; a script's own bytes are never
+     * decoded.
      */
     private Varargs unpack(Signal signal) {
         return LuaValue.varargsOf(

@@ -350,8 +350,7 @@ final class ScreenBufferTest {
 
     /**
      * The counterweight to onlyNewlineEndsALine. writeLine reads that byte
-     * because it lays lines out; set addresses cells and reads none, which is
-     * what OpenComputers does.
+     * because it lays lines out; set addresses cells and reads none.
      */
     @Test
     void setStoresANewlineAsAnyOtherByte() {

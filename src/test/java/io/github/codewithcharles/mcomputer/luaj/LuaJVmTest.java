@@ -469,10 +469,11 @@ public class LuaJVmTest {
     }
 
     /**
-     * OpenComputers defaults to math.huge, which this sandbox cannot name:
-     * MathLib is not installed, so absence is the ordinary route to it. Without
-     * this test a default of some large millisecond count passes everything
-     * else, and a shell parked on pullSignal wakes for nothing.
+     * The default timeout is infinite, and this sandbox cannot name math.huge:
+     * MathLib is not installed, so passing no argument is the ordinary route
+     * to it. Without this test a default of some large millisecond count
+     * passes everything else, and a shell parked on pullSignal wakes for
+     * nothing.
      */
     @Test
     public void pullSignalWithNoArgumentWaitsWithoutATimeout() {
@@ -502,9 +503,9 @@ public class LuaJVmTest {
     }
 
     /**
-     * A signal arrives unpacked, name first, as OpenComputers hands it over.
-     * The name is a String on the Java side and the converter refuses one as a
-     * value, so it cannot travel that way and this is what pins the shape.
+     * A signal arrives unpacked, name first. The name is a String on the Java
+     * side and the converter refuses one as a value, so it cannot travel that
+     * way and this is what pins the shape.
      */
     @Test
     public void aPulledSignalArrivesUnpacked() {

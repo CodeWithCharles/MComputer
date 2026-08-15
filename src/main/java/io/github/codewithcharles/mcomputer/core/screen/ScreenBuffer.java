@@ -86,8 +86,7 @@ public final class ScreenBuffer {
     /**
      * Writes bytes from a given cell: addressing rather than laying out. It
      * does not advance the write position and does not wrap - what runs past
-     * the last column is dropped, as OpenComputers' gpu.set does, wrapping
-     * being the OS layer's job in Lua.
+     * the last column is dropped, wrapping being the OS layer's job in Lua.
      *
      * <p>No byte is read here, {@code '\n'} included. That is
      * {@link #writeLine}'s business, not a cell writer's.

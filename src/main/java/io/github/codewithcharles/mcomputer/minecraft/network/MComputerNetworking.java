@@ -36,8 +36,7 @@ public final class MComputerNetworking {
      * {@code blockInteractionRange()}, so a creative reach or a modifier is
      * honoured without a number of ours.
      *
-     * <p>Out of range the window stays open and stops accepting keys, which is
-     * what OpenComputers does.
+     * <p>Out of range the window stays open and stops accepting keys.
      */
     private static void deliver(ServerPlayer player, TerminalInputPayload payload) {
         BlockPos pos = payload.pos();

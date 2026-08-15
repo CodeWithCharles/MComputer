@@ -33,7 +33,6 @@ public class ComputerBlockEntity extends BlockEntity {
     /** TODO: a guess. tickRunsAtMostMaxTasksPerTick proves it reaches drain(). */
     private static final int MAX_TASKS_PER_TICK = 16;
 
-    /** OpenComputers' default and minimum. */
     private static final int SIGNAL_QUEUE_CAPACITY = 256;
 
     /** TODO: a guess, like MAX_TASKS_PER_TICK. */
@@ -95,10 +94,10 @@ public class ComputerBlockEntity extends BlockEntity {
             SIGNAL_QUEUE_CAPACITY);
 
     /**
-     * The keyboard is built into the block, as it is a block in OpenComputers
-     * too. It has an address and no methods - a component nothing can call but
-     * a script can find in component.list(), which is the shape ComponentApi
-     * was decided to allow before anything needed it.
+     * The keyboard is built into the block. It has an address and no methods -
+     * a component nothing can call but a script can find in component.list(),
+     * which is the shape ComponentApi was decided to allow before anything
+     * needed it.
      */
     private final UUID keyboard = UUID.randomUUID();
 
@@ -260,9 +259,9 @@ public class ComputerBlockEntity extends BlockEntity {
 
     /**
      * A key pressed at this computer by a player the network layer has already
-     * found in range. The keyboard's address comes first, as OpenComputers has
-     * it, and pushSignal answering false for a stopped machine is the designed
-     * answer rather than a case to branch on.
+     * found in range. The keyboard's address comes first, and pushSignal
+     * answering false for a stopped machine is the designed answer rather than
+     * a case to branch on.
      */
     public void keyDown(ServerPlayer player, int character, int code) {
         machine.pushSignal(new Signal("key_down", new Object[] {
