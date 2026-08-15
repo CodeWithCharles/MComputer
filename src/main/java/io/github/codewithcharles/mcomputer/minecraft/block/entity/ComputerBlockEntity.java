@@ -29,6 +29,9 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.storage.ValueInput;
 import net.minecraft.world.level.storage.ValueOutput;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 
@@ -86,6 +89,17 @@ public class ComputerBlockEntity extends BlockEntity {
      */
     private static final int MAX_PENDING_LINES = 64;
 
+    /**
+     * Built into the block until an item can hold one. It carries no UUID: a
+     * UUID gives an identity to a disk that moves, and nothing moves yet.
+     */
+    private final DiskImage disk = new DiskImage(DISK_CAPACITY, DISK_ENTRY_COST);
+
+    /**
+     * What the chunk was last told about. setChanged() marks the chunk dirty,
+     * so calling it every tick would pay for a save that has nothing to save.
+     */
+    private long savedRevision;
     private long sentRevision;
 
     /**
@@ -131,6 +145,32 @@ public class ComputerBlockEntity extends BlockEntity {
         // not hardcode one.
         machine.components().add(new Component(UUID.randomUUID(), Gpu.api(screen)));
         machine.components().add(new Component(keyboard, ComponentApi.builder("keyboard").build()));
+        machine.components().add(new Component(UUID.randomUUID(), Filesystem.api(disk, MAX_OPEN_FILES)));
+    }
+
+    /**
+     * The shell is a file the player owns. Written only when the disk has none,
+     * so an edited one is never overwritten and a deleted one comes back at the
+     * next boot.
+     */
+    private void installShellIfAbsent() {
+        if (disk.exists(SHELL_PATH)) {
+            return;
+        }
+        disk.createFile(SHELL_PATH);
+        disk.write(SHELL_PATH, 0, readShell());
+    }
+
+    private static byte[] readShell() {
+        InputStream source = ComputerBlockEntity.class.getResourceAsStream(SHELL);
+        if (source == null) {
+            throw new IllegalStateException("the shell is missing from the mod jar: " + SHELL);
+        }
+        try (source) {
+            return source.readAllBytes();
+        } catch (IOException unreadable) {
+            throw new IllegalStateException("the shell could not be read", unreadable);
+        }
     }
 
     public void toggle() {
@@ -148,10 +188,22 @@ public class ComputerBlockEntity extends BlockEntity {
         if (machine.isRunning() != wasRunning) {
             syncState();
         }
+        // The drain still has no guard, for the reason it never had one: a
+        // dying script's last lines are still queued. But what decides to send
+        // is the buffer, not the queue - the graphics card writes through the
+        // CallQueue and never touches ScreenOutput, so watching the queue misses
+        // every write a shell makes.
         screenOutput.drain();
         if (screen.revision() != sentRevision) {
             sentRevision = screen.revision();
             sendScreen();
+        }
+        // sendScreen() deliberately does not call setChanged(), so a script
+        // that writes a file without printing would never make the chunk dirty
+        // and its work would never reach the disk.
+        if (disk.revision() != savedRevision) {
+            savedRevision = disk.revision();
+            setChanged();
         }
     }
 
@@ -173,6 +225,7 @@ public class ComputerBlockEntity extends BlockEntity {
     protected void saveAdditional(ValueOutput output) {
         super.saveAdditional(output);
         output.putBoolean("running", machine.isRunning());
+        output.store("disk", Codec.BYTE_BUFFER, ByteBuffer.wrap(disk.snapshot()));
     }
 
     @Override
@@ -198,6 +251,20 @@ public class ComputerBlockEntity extends BlockEntity {
             return;
         }
 
+        input.read("disk", Codec.BYTE_BUFFER).ifPresent(saved -> {
+            byte[] snapshot = new byte[saved.remaining()];
+            saved.get(snapshot);
+            try {
+                disk.restore(snapshot);
+            } catch (ComponentException unreadable) {
+                // A world must load. The player gets an empty disk and a line
+                // in the log rather than a crash he cannot act on.
+                MComputer.LOGGER.error("computer at {} could not read its disk",
+                        getBlockPos(), unreadable);
+            }
+        });
+        savedRevision = disk.revision();
+
         if (input.getBooleanOr("running", false)) {
             startQuietly();
         } else {
@@ -213,6 +280,10 @@ public class ComputerBlockEntity extends BlockEntity {
         // does not survive a world reload" costs no code.
         tag.putByteArray("screen", screen.snapshot());
         tag.putInt("screen_row", screen.writePosition());
+        // The mirror of the two lines above: the screen is synchronised and not
+        // saved, the disk is saved and not synchronised. saveCustomOnly ran
+        // saveAdditional, so it is here that the disk leaves the packet.
+        tag.remove("disk");
         return tag;
     }
 
@@ -269,6 +340,7 @@ public class ComputerBlockEntity extends BlockEntity {
      * the screen, and letting it escape would fail a world load.
      */
     private void startQuietly() {
+        installShellIfAbsent();
         screen.clear();
         try {
             machine.start();
