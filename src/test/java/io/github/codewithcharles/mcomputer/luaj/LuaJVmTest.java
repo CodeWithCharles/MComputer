@@ -230,6 +230,22 @@ public class LuaJVmTest {
                 "if " + name + " ~= nil then error('" + name + " is reachable') end"));
     }
 
+    /** What a readline could not do until now: turn a key code into a character. */
+    @Test
+    public void theInstalledLibrariesAreReachable() {
+        assertDoesNotThrow(() -> runSource(
+                "assert(string.char(97) == 'a')\n"
+                        + "assert(table.concat({'a', 'b'}, '') == 'ab')\n"
+                        + "assert(math.huge > 0)"));
+    }
+
+    /** Asked in Lua, like the absences above: what matters is what a script can name. */
+    @Test
+    public void stringDumpIsAbsent() {
+        assertDoesNotThrow(() -> runSource(
+                "if string.dump ~= nil then error('string.dump is reachable') end"));
+    }
+
     @Test
     public void printReachesTheSink() {
         runSource("print('hello')");
@@ -604,5 +620,18 @@ public class LuaJVmTest {
         runSource("local f, err = load('return 3', 'user', 'b')\n"
                 + "assert(f ~= nil, 'the mode was not overridden: ' .. tostring(err))\n"
                 + "assert(f() == 3, 'the chunk did not run')");
+    }
+
+    /**
+     * The narrower hole the 2026 repair of load opened: forwarding a fourth
+     * argument the caller never gave hands the chunk a nil environment, and
+     * every global it names becomes an index into nil. Invisible until a caller
+     * passes fewer than four arguments and reads a global - which is a shell.
+     */
+    @Test
+    public void aChunkLoadedWithoutAnEnvironmentSeesTheGlobals() {
+        assertDoesNotThrow(() -> runSource(
+                "local chunk = assert(load('return type(print)', 'inner'))\n"
+                        + "assert(chunk() == 'function', 'the chunk saw no globals')"));
     }
 }

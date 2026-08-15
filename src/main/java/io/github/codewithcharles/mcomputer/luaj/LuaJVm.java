@@ -15,6 +15,9 @@ import io.github.codewithcharles.mcomputer.core.vm.VmException;
 import io.github.codewithcharles.mcomputer.core.vm.VmOutput;
 import org.luaj.vm2.lib.BaseLib;
 import org.luaj.vm2.lib.DebugLib;
+import org.luaj.vm2.lib.MathLib;
+import org.luaj.vm2.lib.StringLib;
+import org.luaj.vm2.lib.TableLib;
 import org.luaj.vm2.lib.VarArgFunction;
 import org.luaj.vm2.lib.ZeroArgFunction;
 
@@ -101,6 +104,19 @@ public final class LuaJVm implements Vm {
         LuaTable registry = new LuaTable();
         registry.set("loaded", new LuaTable());
         this.globals.set("package", registry);
+
+        // Pure Lua, no I/O and no classpath: measured on the jar, and none of
+        // them comes from org.luaj.vm2.lib.jse, which is where luajava, io and
+        // os live. Nothing from that package is ever loaded here.
+        this.globals.load(new StringLib());
+        this.globals.load(new TableLib());
+        this.globals.load(new MathLib());
+
+        // The second lock beside the absent undumper. It produces real Lua
+        // bytecode, measured, and nothing here can load it back - so removing
+        // it takes away nothing a script could do and keeps the boundary saying
+        // what it means.
+        this.globals.get("string").set("dump", LuaValue.NIL);
 
         this.globals.load(new DebugLib());
 
