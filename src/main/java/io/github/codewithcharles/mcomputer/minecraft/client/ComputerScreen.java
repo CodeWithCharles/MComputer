@@ -1,11 +1,15 @@
 package io.github.codewithcharles.mcomputer.minecraft.client;
 
 import io.github.codewithcharles.mcomputer.minecraft.block.entity.ComputerBlockEntity;
+import io.github.codewithcharles.mcomputer.minecraft.network.TerminalInputPayload;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.input.CharacterEvent;
+import net.minecraft.client.input.KeyEvent;
 import net.minecraft.network.chat.Component;
 
 /**
@@ -44,5 +48,25 @@ public final class ComputerScreen extends Screen {
     {
         super.extractRenderState(graphics, mouseX, mouseY, partialTick);
         TerminalRenderer.draw(graphics, font, computer.screen(), width, height);
+    }
+
+    @Override
+    public boolean keyPressed(KeyEvent event) {
+        if (super.keyPressed(event)) {
+            return true;
+        }
+        send(0, event.key());
+        return true;
+    }
+
+    @Override
+    public boolean charTyped(CharacterEvent event) {
+        send(event.codepoint(), 0);
+        return true;
+    }
+
+    private void send(int character, int code) {
+        ClientPlayNetworking.send(
+                new TerminalInputPayload(computer.getBlockPos(), character, code));
     }
 }

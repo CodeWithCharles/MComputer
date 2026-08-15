@@ -4,7 +4,9 @@ import com.mojang.serialization.Codec;
 import io.github.codewithcharles.mcomputer.MComputer;
 import io.github.codewithcharles.mcomputer.core.component.BoundaryLimits;
 import io.github.codewithcharles.mcomputer.core.component.Component;
+import io.github.codewithcharles.mcomputer.core.component.ComponentApi;
 import io.github.codewithcharles.mcomputer.core.machine.Machine;
+import io.github.codewithcharles.mcomputer.core.machine.Signal;
 import io.github.codewithcharles.mcomputer.core.screen.Gpu;
 import io.github.codewithcharles.mcomputer.core.screen.ScreenBuffer;
 import io.github.codewithcharles.mcomputer.core.screen.ScreenOutput;
@@ -15,6 +17,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntity;
@@ -36,16 +39,23 @@ public class ComputerBlockEntity extends BlockEntity {
     /** TODO: a guess, like MAX_TASKS_PER_TICK. */
     private static final int INSTRUCTION_BUDGET = 5_000_000;
 
+//    private static final byte[] BOOT_SCRIPT = """
+//            local gpu
+//            for address, kind in pairs(component.list()) do
+//                if kind == 'gpu' then gpu = address end
+//            end
+//            print('gpu at ' .. gpu)
+//            local width, height = component.invoke(gpu, 'getResolution')
+//            print('resolution ' .. width .. 'x' .. height)
+//            component.invoke(gpu, 'set', 1, 5, 'written by the gpu')
+//            print(done)
+//            """.getBytes(StandardCharsets.UTF_8);
     private static final byte[] BOOT_SCRIPT = """
-            local gpu
-            for address, kind in pairs(component.list()) do
-                if kind == 'gpu' then gpu = address end
+            print('type something')
+            while true do
+                local name, address, character, code = computer.pullSignal()
+                print(name .. ' char=' .. character .. ' code=' .. code)
             end
-            print('gpu at ' .. gpu)
-            local width, height = component.invoke(gpu, 'getResolution')
-            print('resolution ' .. width .. 'x' .. height)
-            component.invoke(gpu, 'set', 1, 5, 'written by the gpu')
-            print(done)
             """.getBytes(StandardCharsets.UTF_8);
 
     private static final int SCREEN_WIDTH = 80;
@@ -84,6 +94,14 @@ public class ComputerBlockEntity extends BlockEntity {
             "boot.lua",
             SIGNAL_QUEUE_CAPACITY);
 
+    /**
+     * The keyboard is built into the block, as it is a block in OpenComputers
+     * too. It has an address and no methods - a component nothing can call but
+     * a script can find in component.list(), which is the shape ComponentApi
+     * was decided to allow before anything needed it.
+     */
+    private final UUID keyboard = UUID.randomUUID();
+
     public ComputerBlockEntity(BlockPos pos, BlockState state) {
         super(MComputerBlockEntities.COMPUTER, pos, state);
         // Built into the block, as the keyboard is: the inventory that would
@@ -92,6 +110,7 @@ public class ComputerBlockEntity extends BlockEntity {
         // address is opaque, so stabilising it later breaks no script that did
         // not hardcode one.
         machine.components().add(new Component(UUID.randomUUID(), Gpu.api(screen)));
+        machine.components().add(new Component(keyboard, ComponentApi.builder("keyboard").build()));
     }
 
     public void toggle() {
@@ -237,5 +256,19 @@ public class ComputerBlockEntity extends BlockEntity {
         } catch (VmException e) {
             // already reported on the output channel; the computer stays off
         }
+    }
+
+    /**
+     * A key pressed at this computer by a player the network layer has already
+     * found in range. The keyboard's address comes first, as OpenComputers has
+     * it, and pushSignal answering false for a stopped machine is the designed
+     * answer rather than a case to branch on.
+     */
+    public void keyDown(ServerPlayer player, int character, int code) {
+        machine.pushSignal(new Signal("key_down", new Object[] {
+                keyboard.toString().getBytes(StandardCharsets.UTF_8),
+                (double) character,
+                (double) code,
+                player.getName().getString().getBytes(StandardCharsets.UTF_8) }));
     }
 }

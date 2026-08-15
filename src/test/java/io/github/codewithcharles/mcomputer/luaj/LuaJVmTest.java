@@ -538,4 +538,59 @@ public class LuaJVmTest {
         assertTrue(_written.isEmpty(), "the script kept running after being stopped");
         assertTrue(flagWasPutBack, "the interrupt flag was not put back");
     }
+
+    /**
+     * The path we cannot repair: what pcall hands back is built by LuaJ and
+     * never reaches our catch. This is why the chunk name is bare and the
+     * compile message is the one repaired, and it is the reverse of the
+     * 2026-08-12 choice - made before a script could catch anything.
+     */
+    @Test
+    public void theMessageAScriptCatchesCarriesNoMarker() {
+        runSource("local ok, err = pcall(function() local f = nil; f() end)\nprint(err)");
+
+        String shown = new String(_written.get(0), UTF_8);
+        assertTrue(shown.startsWith(CHUNK_NAME + ":"), "message was: " + shown);
+    }
+
+    /**
+     * BaseLib's load defaults to mode "bt", and Globals.loadPrototype tests the
+     * binary mode first, so with no undumper installed it answers
+     * "No undumper." for every input - measured on the jar. A shell compiling a
+     * user's file would never get a chunk back.
+     */
+    @Test
+    public void aScriptCanCompileSource() {
+        runSource("local f = load('return 1 + 1')\n"
+                + "assert(f, 'load returned nil')\n"
+                + "assert(f() == 2, 'the chunk did not run')");
+    }
+
+    /**
+     * The other half: a syntax error has to come back as one, or a shell cannot
+     * tell a user's typo from a broken sandbox.
+     */
+    @Test
+    public void aScriptGetsASyntaxErrorFromLoad() {
+        runSource("local f, err = load('local x =')\n"
+                + "assert(f == nil, 'load accepted a bad chunk')\n"
+                + "print(err)");
+
+        String shown = new String(_written.get(0), UTF_8);
+        assertTrue(shown.contains("unexpected symbol"), "message was: " + shown);
+    }
+
+    /**
+     * Guards a decision. The mode belongs to this class, not to the caller:
+     * precompiled bytecode reaches the VM below every check the project owns.
+     * A script asking for it gets text compilation instead, so the request is
+     * ignored rather than refused - the second lock, an absent undumper, is
+     * untouched either way.
+     */
+    @Test
+    public void aScriptCannotAskForBinaryChunks() {
+        runSource("local f, err = load('return 3', 'user', 'b')\n"
+                + "assert(f ~= nil, 'the mode was not overridden: ' .. tostring(err))\n"
+                + "assert(f() == 3, 'the chunk did not run')");
+    }
 }

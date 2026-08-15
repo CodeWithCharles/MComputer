@@ -4,6 +4,7 @@ import io.github.codewithcharles.mcomputer.minecraft.block.MComputerBlocks;
 import io.github.codewithcharles.mcomputer.minecraft.block.entity.MComputerBlockEntities;
 import io.github.codewithcharles.mcomputer.minecraft.item.MComputerItemGroups;
 import io.github.codewithcharles.mcomputer.minecraft.item.MComputerItems;
+import io.github.codewithcharles.mcomputer.minecraft.network.MComputerNetworking;
 import net.fabricmc.api.ModInitializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -27,5 +28,6 @@ public class MComputer implements ModInitializer {
         MComputerBlockEntities.register();
         MComputerItems.register();
         MComputerItemGroups.register();
+        MComputerNetworking.register();
     }
 }

@@ -36,21 +36,10 @@ public final class LuaJVm implements Vm {
      * Text source only. {@code "b"} would accept precompiled Lua bytecode,
      * which reaches the VM below every check this project owns.
      * {@code LoadState.install} is never called either, so no undumper exists
-     * even if this string changed.
+     * even if this string changed - which is also why {@link Load} has to force
+     * this mode onto a script's own {@code load}.
      */
     private static final String TEXT_SOURCE_ONLY = "t";
-
-    /**
-     * Lua's marker for a chunk name denoting a file. Without it LuaJ renders
-     * the location as {@code [string "boot.lua"]:1:}.
-     *
-     * <p>The two error paths want opposite names and only one can be given:
-     * {@code LexState} and the traceback strip the marker, {@code LuaClosure}'s
-     * runtime prefix copies it verbatim, and {@code =} leaks exactly like
-     * {@code @}. So the marker stays and {@link #withoutFileMarker} repairs the
-     * one path that needs it.
-     */
-    private static final String NAMES_A_FILE = "@";
 
     /**
      * The grain at which the budget is spent and a stop request is noticed. A
@@ -63,6 +52,7 @@ public final class LuaJVm implements Vm {
     private final int instructionBudget;
     private final Globals globals;
     private final LuaValue setHook;
+    private final LuaValue baseLoad;
     private LuaValue loaded;
     private String chunkName;
     private int remaining;
@@ -100,6 +90,10 @@ public final class LuaJVm implements Vm {
         this.globals.set("loadfile", LuaValue.NIL);
         this.globals.finder = null;
 
+        // Captured before being replaced, like sethook below.
+        this.baseLoad = this.globals.get("load");
+        this.globals.set("load", new Load());
+
         this.globals.set("print", new Print());
 
         // Every LuaJ library except BaseLib ends its installation with
@@ -135,11 +129,11 @@ public final class LuaJVm implements Vm {
         try {
             this.loaded = globals.load(
                     new ByteArrayInputStream(chunk),
-                    NAMES_A_FILE + chunkName,
+                    chunkName,
                     TEXT_SOURCE_ONLY,
                     globals);
         } catch (LuaError e) {
-            throw failure(e.getMessage(), e);
+            throw failure(withoutQuoting(e.getMessage(), chunkName), e);
         }
         this.chunkName = chunkName;
     }
@@ -167,7 +161,7 @@ public final class LuaJVm implements Vm {
             throw failure(
                     chunkName + ": instruction budget exhausted (" + instructionBudget + ")", e);
         } catch (LuaError e) {
-            throw failure(withoutFileMarker(e.getMessage()), e);
+            throw failure(e.getMessage(), e);
         }
     }
 
@@ -195,13 +189,17 @@ public final class LuaJVm implements Vm {
     }
 
     /**
-     * Removes the marker LuaJ copies into a runtime error's location. See
-     * {@link #NAMES_A_FILE} for why it exists on one path and not the other.
+     * Repairs the one location LuaJ renders as {@code [string "boot.lua"]:1:},
+     * which is what it does with a chunk name it was not told is a file.
+     *
+     * <p>Lua's own marker, {@code @}, buys the clean form here and leaks into
+     * every runtime error instead - including the string a {@code pcall} hands
+     * back to a script, which never reaches our catch. So the name stays bare
+     * and this message, which only ever reaches us, is the one repaired.
      */
-    private String withoutFileMarker(String message) {
-        return message.startsWith(NAMES_A_FILE + chunkName)
-                ? message.substring(NAMES_A_FILE.length())
-                : message;
+    private static String withoutQuoting(String message, String chunkName) {
+        String quoted = "[string \"" + chunkName + "\"]";
+        return message.startsWith(quoted) ? chunkName + message.substring(quoted.length()) : message;
     }
 
     /**
@@ -223,6 +221,24 @@ public final class LuaJVm implements Vm {
             }
             output.write(LuaStrings.bytesOf(line.tostring()));
             return NONE;
+        }
+    }
+
+    /**
+     * Replaces BaseLib's load, whose default mode is {@code "bt"}.
+     * {@code Globals.loadPrototype} tests the binary mode first, so with no
+     * undumper - and there is none, deliberately - it answers "No undumper."
+     * for every input, valid source included.
+     *
+     * <p>The mode is forced, not defaulted: a caller asking for {@code "b"}
+     * gets text compilation. Everything else is delegated, so both reader
+     * forms, the chunk name and the environment keep BaseLib's behaviour.
+     */
+    private final class Load extends VarArgFunction {
+        @Override
+        public Varargs invoke(Varargs args) {
+            return baseLoad.invoke(LuaValue.varargsOf(new LuaValue[] {
+                    args.arg(1), args.arg(2), LuaValue.valueOf(TEXT_SOURCE_ONLY), args.arg(4) }));
         }
     }
 
