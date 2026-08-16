@@ -4,6 +4,8 @@ import io.github.codewithcharles.mcomputer.core.component.Arguments;
 import io.github.codewithcharles.mcomputer.core.component.ComponentApi;
 import io.github.codewithcharles.mcomputer.core.component.ComponentException;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -300,5 +302,45 @@ final class FilesystemTest {
         assertThrows(ComponentException.class, () -> invoke("read", 999.0, 1.0));
         assertThrows(ComponentException.class, () -> invoke("write", 999.0, bytes("a")));
         assertThrows(ComponentException.class, () -> invoke("seek", 999.0, bytes("set"), 0.0));
+    }
+
+    private static String text(Object value) {
+        return new String((byte[]) value, StandardCharsets.US_ASCII);
+    }
+
+    /**
+     * Eight spellings, four places. The last two are the ones a shell meets:
+     * the root has to come back as "/" and not as the empty string, and going
+     * up from the first level has to land on it.
+     */
+    @ParameterizedTest
+    @CsvSource({
+            "/a/b,       /a/b",
+            "/a/b/,      /a/b",
+            "//a///b,    /a/b",
+            "/a/./b,     /a/b",
+            "/a/b/..,    /a",
+            "/a/b/../c,  /a/c",
+            "/,          /",
+            "/a/..,      /" })
+    void canonicalGivesOneSpellingPerPlace(String path, String expected) {
+        assertEquals(expected, text(invoke("canonical", bytes(path))[0]));
+    }
+
+    /** The store's two refusals, reached without touching the disk. */
+    @Test
+    void canonicalRefusesWhatTheStoreRefuses() {
+        assertThrows(ComponentException.class, () -> invoke("canonical", bytes("a/b")));
+        assertThrows(ComponentException.class, () -> invoke("canonical", bytes("/..")));
+    }
+
+    /**
+     * It answers about a path and not about a disk, so nothing here is created
+     * and the answer is the same either way.
+     */
+    @Test
+    void canonicalDoesNotAskWhetherThePlaceExists() {
+        assertEquals("/nowhere/at/all",
+                text(invoke("canonical", bytes("/nowhere/./at/all"))[0]));
     }
 }

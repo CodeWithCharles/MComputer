@@ -67,4 +67,18 @@ final class Paths {
         return descendant.size() > ancestor.size()
                 && descendant.subList(0, ancestor.size()).equals(ancestor);
     }
+
+    /**
+     * The path with {@code .} and {@code ..} resolved and nothing repeated, so
+     * two spellings of one place are one string.
+     *
+     * <p>A shell carries a working directory, and one kept as typed grows a
+     * tail of {@code ..} that never shortens.
+     *
+     * @throws ComponentException on the same two cases as {@link #segmentsOf}
+     */
+    static String canonical(String path) {
+        List<String> segments = segmentsOf(path);
+        return segments.isEmpty() ? "/" : "/" + String.join("/", segments);
+    }
 }

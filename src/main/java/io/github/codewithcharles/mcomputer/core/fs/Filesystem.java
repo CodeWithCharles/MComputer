@@ -44,6 +44,9 @@ public final class Filesystem {
                         new Object[] { (double) image.size(path(arguments, 0)) })
                 .method("list", arguments ->
                         new Object[] { listed(image, path(arguments, 0)) })
+                .method("canonical", arguments ->
+                        new Object[] { Paths.canonical(path(arguments, 0))
+                                .getBytes(StandardCharsets.UTF_8) })
                 .method("spaceTotal", arguments ->
                         new Object[] { (double) image.spaceTotal() })
                 .method("spaceUsed", arguments ->
