@@ -132,6 +132,12 @@ public final class Filesystem {
                 removeBranch(image, path + "/" + name);
             }
         }
-        return image.remove(path);
+        if (image.remove(path)) {
+            return true;
+        }
+        // The store refuses the root, which is a place and not an entry it
+        // could unhook. Emptying it is everything removing it can mean, and it
+        // has just happened, so the answer is yes rather than the store's no.
+        return Paths.segmentsOf(path).isEmpty();
     }
 }

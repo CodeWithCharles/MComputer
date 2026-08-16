@@ -145,6 +145,22 @@ final class FilesystemTest {
         assertEquals(0, _image.spaceUsed());
     }
 
+    /**
+     * The store refuses the root and this layer has to say what emptying it
+     * means. Born red: removeBranch used to hand the store's no straight back,
+     * so rm / wiped the disk and reported that it had not.
+     */
+    @Test
+    void removingTheRootEmptiesItAndSaysSo() {
+        _image.makeDirectory("/a");
+        _image.createFile("/a/x.lua");
+        _image.createFile("/f");
+
+        assertEquals(true, invoke("remove", bytes("/"))[0]);
+        assertTrue(names(invoke("list", bytes("/"))[0]).isEmpty());
+        assertEquals(0, _image.spaceUsed());
+    }
+
     @Test
     void removeIsFalseOnWhatIsNotThere() {
         assertEquals(false, invoke("remove", bytes("/nowhere"))[0]);
