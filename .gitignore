@@ -22,7 +22,10 @@ versions/*/logs/
 .classpath
 .project
 .settings/
-bin/
+# Anchored: Eclipse's output directory is at the project root. Unanchored,
+# this matched every directory named bin at any depth, and it silently kept
+# the whole of the shell's /bin out of the repository.
+/bin/
 .vscode/
 
 # OS

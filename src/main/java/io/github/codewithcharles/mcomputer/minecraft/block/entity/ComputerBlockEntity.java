@@ -61,7 +61,7 @@ public final class ComputerBlockEntity extends BlockEntity {
      *
      * <p>The store creates one level at a time, so the directories go first.
      */
-    private static final String[] SYSTEM_DIRECTORIES = { "/bin" };
+    private static final String[] SYSTEM_DIRECTORIES = { "/bin", "/art", "/etc" };
 
     private static final String[] SYSTEM_FILES = {
         "/boot.lua",
@@ -72,6 +72,10 @@ public final class ComputerBlockEntity extends BlockEntity {
         "/bin/mkdir.lua",
         "/bin/rm.lua",
         "/bin/mv.lua",
+        "/bin/help.lua",
+        "/bin/glyphs.lua",
+        "/bin/hi.lua",
+        "/art/heart.art",
     };
 
     private static final byte[] BOOT_SCRIPT = """

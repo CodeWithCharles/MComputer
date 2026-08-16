@@ -13,3 +13,7 @@ gradlew text eol=lf
 *.png  binary
 *.ogg  binary
 *.zip  binary
+
+# Screen art is one raw byte per cell, and those bytes go above 127.
+# Normalising them would rewrite the picture.
+*.art binary
