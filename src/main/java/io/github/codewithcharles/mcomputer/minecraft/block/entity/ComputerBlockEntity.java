@@ -52,8 +52,27 @@ public final class ComputerBlockEntity extends BlockEntity {
 
     private static final int MAX_OPEN_FILES = 16;
 
-    private static final String SHELL = "/assets/mcomputer/lua/shell.lua";
-    private static final String SHELL_PATH = "/boot.lua";
+    private static final String RESOURCES = "/assets/mcomputer/lua/";
+
+    /**
+     * What a fresh disk is given. It stands in for a floppy: at milestone 6 the
+     * same tree arrives on an item and this list becomes its contents, so it
+     * names disk paths and the resource path is derived from them.
+     *
+     * <p>The store creates one level at a time, so the directories go first.
+     */
+    private static final String[] SYSTEM_DIRECTORIES = { "/bin" };
+
+    private static final String[] SYSTEM_FILES = {
+        "/boot.lua",
+        "/bin/lua.lua",
+        "/bin/ls.lua",
+        "/bin/cd.lua",
+        "/bin/cat.lua",
+        "/bin/mkdir.lua",
+        "/bin/rm.lua",
+        "/bin/mv.lua",
+    };
 
     private static final byte[] BOOT_SCRIPT = """
             local fs
@@ -162,27 +181,41 @@ public final class ComputerBlockEntity extends BlockEntity {
     }
 
     /**
-     * The shell is a file the player owns. Written only when the disk has none,
-     * so an edited one is never overwritten and a deleted one comes back at the
-     * next boot.
+     * The system is files the player owns. Each is written only when the disk
+     * has none, so an edited one is never overwritten and a deleted one comes
+     * back at the next boot.
+     *
+     * <p>A world must load: a disk with no room left costs the player a shell
+     * and a line in the log rather than a crash. Same shape as a snapshot that
+     * will not read.
      */
-    private void installShellIfAbsent() {
-        if (disk.exists(SHELL_PATH)) {
-            return;
+    private void installSystemIfAbsent() {
+        try {
+            for (String directory : SYSTEM_DIRECTORIES) {
+                disk.makeDirectory(directory);
+            }
+            for (String path : SYSTEM_FILES) {
+                if (disk.exists(path)) {
+                    continue;
+                }
+                disk.createFile(path);
+                disk.write(path, 0, resource(RESOURCES + path.substring(1)));
+            }
+        } catch (ComponentException noRoom) {
+            MComputer.LOGGER.error("computer at {} could not install its system",
+                    getBlockPos(), noRoom);
         }
-        disk.createFile(SHELL_PATH);
-        disk.write(SHELL_PATH, 0, readShell());
     }
 
-    private static byte[] readShell() {
-        InputStream source = ComputerBlockEntity.class.getResourceAsStream(SHELL);
+    private static byte[] resource(String path) {
+        InputStream source = ComputerBlockEntity.class.getResourceAsStream(path);
         if (source == null) {
-            throw new IllegalStateException("the shell is missing from the mod jar: " + SHELL);
+            throw new IllegalStateException("missing from the mod jar: " + path);
         }
         try (source) {
             return source.readAllBytes();
         } catch (IOException unreadable) {
-            throw new IllegalStateException("the shell could not be read", unreadable);
+            throw new IllegalStateException("could not be read: " + path, unreadable);
         }
     }
 
@@ -357,7 +390,7 @@ public final class ComputerBlockEntity extends BlockEntity {
      * the screen, and letting it escape would fail a world load.
      */
     private void startQuietly() {
-        installShellIfAbsent();
+        installSystemIfAbsent();
         screen.clear();
         try {
             machine.start();

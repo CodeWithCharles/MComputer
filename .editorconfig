@@ -1,0 +1,28 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+indent_style = space
+indent_size = 4
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.lua]
+indent_size = 2
+max_line_length = 80
+
+[*.{java,kts}]
+max_line_length = 100
+
+[*.json]
+indent_size = 2
+
+# A markdown line break is two trailing spaces, so trimming them changes what
+# the file renders as.
+[*.md]
+trim_trailing_whitespace = false
+
+# Mirrors .gitattributes, which keeps these two out of the LF rule.
+[*.{bat,cmd}]
+end_of_line = crlf
