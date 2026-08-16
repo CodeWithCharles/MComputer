@@ -53,6 +53,11 @@ local KEY_BACKSPACE = 259
 -- character, because GLFW separates them. So a code of zero is not a key.
 function readLine(prompt)
   local line = ''
+  -- write is the only thing that scrolls, so the prompt claims its row through
+  -- it and set only ever redraws a row that is already the buffer's. Painting
+  -- the row a write is about to scroll into left a copy of the prompt behind
+  -- and ate the last line of every command's output.
+  write(prompt)
   local row = invoke(gpu, 'getCursor')
   local function draw()
     local text = prompt .. line
@@ -65,7 +70,7 @@ function readLine(prompt)
     invoke(gpu, 'set', 1, row,
       string.sub(text .. string.rep(' ', width), 1, width))
   end
-draw()
+  draw()
   -- One gpu.set per burst of keys rather than one per key. A component call
   -- crosses to the server thread and waits for the next tick, so a draw per key
   -- makes a fast typist queue behind his own echo, each character paying a tick
@@ -75,10 +80,9 @@ draw()
   while true do
     if name == 'key_down' then
       if code == KEY_ENTER then
-        -- No draw: gpu.write lays the finished line on this same row and
-        -- advances, so it replaces what draw left there. Anything typed after
-        -- the enter stays in the queue and the next readLine gets it.
-        write(prompt .. line)
+        -- The row already holds the line, drawn in place, and writing it again
+        -- would land on the next row. Anything typed after the enter stays in
+        -- the queue and the next readLine gets it.
         return line
       elseif code == KEY_BACKSPACE then
         line = string.sub(line, 1, #line - 1)

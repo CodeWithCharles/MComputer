@@ -97,26 +97,34 @@ final class GpuTest {
         assertEquals("cd   ", rowText(_screen, 1));
     }
 
+    /**
+     * Zero on an untouched screen, which is a row {@code set} refuses. A caller
+     * that wants a row of its own writes first and asks after.
+     */
     @Test
-    void theCursorIsTheOneBasedRowTheNextWriteLands() {
-        assertEquals(1.0, invoke("getCursor")[0]);
+    void theCursorIsTheRowWriteLastUsed() {
+        assertEquals(0.0, invoke("getCursor")[0]);
 
         invoke("write", bytes("a"));
 
-        assertEquals(2.0, invoke("getCursor")[0]);
+        assertEquals(1.0, invoke("getCursor")[0]);
     }
 
     /**
-     * The write position may equal the height, which is the ordinary state
-     * "the next write scrolls first". Reported bare it would be a row set()
-     * refuses, so the prompt would blow up exactly when the screen fills.
+     * The suite's decision test. A cursor answering where the next line lands
+     * would say 3 here, on a screen two rows tall, or be clamped to 2 and mean
+     * two different states with one number. Saying which row was last used is
+     * true before and after the scroll, and it is always a row set accepts.
      */
     @Test
-    void aFullScreenReportsItsLastRow() {
+    void aFullScreenKeepsTheCursorOnItsLastRow() {
         invoke("write", bytes("a"));
         invoke("write", bytes("b"));
+        invoke("write", bytes("c"));
 
         assertEquals(2.0, invoke("getCursor")[0]);
+        assertEquals("c    ", rowText(_screen, 1));
         assertDoesNotThrow(() -> invoke("set", 1.0, invoke("getCursor")[0], bytes("x")));
+        assertEquals("x    ", rowText(_screen, 1));
     }
 }

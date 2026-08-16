@@ -16,6 +16,12 @@ import io.github.codewithcharles.mcomputer.core.component.ComponentApi;
  * What stays with the adapter is producing the component: deciding which buffer
  * belongs to which computer, and minting its address.
  *
+ * <p>{@code getCursor} is the one-based row {@code write} last used, and zero
+ * when nothing has been written. It deliberately does not answer where the next
+ * line will land: on a full screen that row does not exist until the write
+ * scrolls, so a caller painting it with {@code set} paints a row the scroll
+ * then moves, leaving a copy behind and destroying the line that was there.
+ *
  * <p>Coordinates are one-based, as in Lua, where {@link ScreenBuffer} counts
  * from zero. That shift lives in {@link #api} and is the fourth in this
  * project; the other three are in the converter, twice, and in
@@ -45,8 +51,7 @@ public final class Gpu {
                     return new Object[0];
                 })
                 .method("getCursor", arguments ->
-                        new Object[] { (double) Math.min(
-                                screen.writePosition() + 1, screen.height()) })
+                        new Object[] { (double) screen.writePosition() })
                 .build();
     }
 
