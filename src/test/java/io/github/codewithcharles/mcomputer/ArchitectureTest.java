@@ -15,7 +15,7 @@ import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
  * test: an architecture that is not checked by a machine is a preference, not a
  * constraint.
  */
-class ArchitectureTest {
+final class ArchitectureTest {
 
     private static final String ROOT = "io.github.codewithcharles.mcomputer";
     private static final String CORE = ROOT + ".core..";

@@ -20,12 +20,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 
-public class LuaJVmTest {
+final class LuaJVmTest {
 
     /**
-     * Not read by anything yet - the hook that spends it lands in a later wave.
-     * Named rather than inlined so the day it becomes load-bearing, the call
-     * sites do not have to be found again.
+     * Large enough that the shared VM never parks on it. The tests that are
+     * about the budget build their own, so this number is deliberately not one
+     * of them.
      */
     private static final int SOME_BUDGET = 1_000_000;
 
@@ -131,7 +131,7 @@ public class LuaJVmTest {
      * failure itself, so we add nothing.
      */
     @Test
-    public void aCompileFailureStartsWithTheChunkNameOnce() {
+    void aCompileFailureStartsWithTheChunkNameOnce() {
         VmException thrown = loadFailureOf("local x =");
 
         assertTrue(thrown.getMessage().startsWith(CHUNK_NAME + ":"),
@@ -147,7 +147,7 @@ public class LuaJVmTest {
      * both paths, which is why one of them is repaired by hand.
      */
     @Test
-    public void aRuntimeFailureStartsWithTheChunkNameOnce() {
+    void aRuntimeFailureStartsWithTheChunkNameOnce() {
         VmException thrown = runFailureOf("local f = nil; f()");
 
         assertTrue(thrown.getMessage().startsWith(CHUNK_NAME + ":"),
@@ -164,7 +164,7 @@ public class LuaJVmTest {
      * compose: the split would be undetectable from the two failure tests alone.
      */
     @Test
-    public void aRuntimeErrorRaisesVmException() {
+    void aRuntimeErrorRaisesVmException() {
         VmException thrown = runFailureOf("local f = nil; f()");
 
         assertTrue(thrown.getMessage().contains("attempt to call"),
@@ -181,7 +181,7 @@ public class LuaJVmTest {
      * a location once {@code DebugLib} is installed - which it is not yet.
      */
     @Test
-    public void theChunkNameReachesLuaJ() {
+    void theChunkNameReachesLuaJ() {
         VmException thrown = loadFailureOf("local x =");
 
         assertTrue(thrown.getMessage().contains(CHUNK_NAME + ":1:"),
@@ -195,7 +195,7 @@ public class LuaJVmTest {
      * report itself as running while executing nothing.
      */
     @Test
-    public void runningBeforeLoadingIsACallerBug() {
+    void runningBeforeLoadingIsACallerBug() {
         assertThrows(IllegalStateException.class, _vm::run);
     }
 
@@ -207,7 +207,7 @@ public class LuaJVmTest {
      * makes the absences mean something.
      */
     @Test
-    public void aScriptCanCallTheBaseLibrary() {
+    void aScriptCanCallTheBaseLibrary() {
         assertDoesNotThrow(() -> runSource("assert(type(1) == 'number')"));
     }
 
@@ -225,14 +225,14 @@ public class LuaJVmTest {
     @ValueSource(strings = {
             "luajava", "require", "package", "io", "os",
             "dofile", "loadfile", "debug" })
-    public void aForbiddenGlobalIsAbsent(String name) {
+    void aForbiddenGlobalIsAbsent(String name) {
         assertDoesNotThrow(() -> runSource(
                 "if " + name + " ~= nil then error('" + name + " is reachable') end"));
     }
 
     /** What a readline could not do until now: turn a key code into a character. */
     @Test
-    public void theInstalledLibrariesAreReachable() {
+    void theInstalledLibrariesAreReachable() {
         assertDoesNotThrow(() -> runSource(
                 "assert(string.char(97) == 'a')\n"
                         + "assert(table.concat({'a', 'b'}, '') == 'ab')\n"
@@ -241,13 +241,13 @@ public class LuaJVmTest {
 
     /** Asked in Lua, like the absences above: what matters is what a script can name. */
     @Test
-    public void stringDumpIsAbsent() {
+    void stringDumpIsAbsent() {
         assertDoesNotThrow(() -> runSource(
                 "if string.dump ~= nil then error('string.dump is reachable') end"));
     }
 
     @Test
-    public void printReachesTheSink() {
+    void printReachesTheSink() {
         runSource("print('hello')");
 
         assertEquals(1, _written.size());
@@ -261,7 +261,7 @@ public class LuaJVmTest {
      * VM's.
      */
     @Test
-    public void printJoinsItsArgumentsWithATab() {
+    void printJoinsItsArgumentsWithATab() {
         runSource("print('a', 1, true)");
 
         assertEquals(1, _written.size());
@@ -276,7 +276,7 @@ public class LuaJVmTest {
      * binary file is corrupted on its first round trip.
      */
     @Test
-    public void printKeepsBytesThatAreNotText() {
+    void printKeepsBytesThatAreNotText() {
         runSource("print('\\255')");
 
         assertArrayEquals(new byte[] { (byte) 0xFF }, _written.get(0));
@@ -288,7 +288,7 @@ public class LuaJVmTest {
      * field's million is what proves the argument reaches the hook.
      */
     @Test
-    public void anEndlessLoopParksOnTheBudget() {
+    void anEndlessLoopParksOnTheBudget() {
         LuaJVm vm = vm(new InstructionBudget(1_000));
         vm.load("while true do end".getBytes(UTF_8), CHUNK_NAME);
         Thread thread = new Thread(() -> {
@@ -317,7 +317,7 @@ public class LuaJVmTest {
      * deadline while its neighbours stay green.
      */
     @Test
-    public void aScriptCannotSwallowAStopWithPcall() throws InterruptedException {
+    void aScriptCannotSwallowAStopWithPcall() throws InterruptedException {
         LuaJVm vm = vm(new InstructionBudget(Integer.MAX_VALUE));
         vm.load("while true do pcall(function() while true do end end) end"
                 .getBytes(UTF_8), CHUNK_NAME);
@@ -342,7 +342,7 @@ public class LuaJVmTest {
      * too early. Interrupting before the loop has even begun works.
      */
     @Test
-    public void anInterruptedScriptStopsWithoutFailing() throws InterruptedException {
+    void anInterruptedScriptStopsWithoutFailing() throws InterruptedException {
         LuaJVm vm = vm(new InstructionBudget(Integer.MAX_VALUE));
         vm.load("while true do end".getBytes(UTF_8), CHUNK_NAME);
 
@@ -375,7 +375,7 @@ public class LuaJVmTest {
      * traceback would be gone from both places at once.
      */
     @Test
-    public void thePlayerGetsOneLineAndTheExceptionKeepsTheRest() {
+    void thePlayerGetsOneLineAndTheExceptionKeepsTheRest() {
         VmException thrown = runFailureOf("local f = nil; f()");
 
         assertEquals(1, _written.size());
@@ -387,7 +387,7 @@ public class LuaJVmTest {
     }
 
     @Test
-    public void aChunkThatDoesNotCompileIsReportedTheSameWay() {
+    void aChunkThatDoesNotCompileIsReportedTheSameWay() {
         VmException thrown = loadFailureOf("local x =");
 
         assertEquals(1, _written.size());
@@ -399,7 +399,7 @@ public class LuaJVmTest {
      * matters is what a script can read, not what the globals table holds.
      */
     @Test
-    public void componentListGivesWhatTheMachineHolds() {
+    void componentListGivesWhatTheMachineHolds() {
         _machine.components.put(ADDRESS, "gpu".getBytes(UTF_8));
 
         runSource("local found = component.list()['" + ADDRESS + "']\n"
@@ -407,7 +407,7 @@ public class LuaJVmTest {
     }
 
     @Test
-    public void componentInvokeForwardsTheAddressTheMethodAndTheArguments() {
+    void componentInvokeForwardsTheAddressTheMethodAndTheArguments() {
         runSource("component.invoke('" + ADDRESS + "', 'set', 1, 'x')");
 
         Object[] call = _machine.calls.get(0);
@@ -422,7 +422,7 @@ public class LuaJVmTest {
      * test here.
      */
     @Test
-    public void componentInvokeGivesEveryReturnValueBackToLua() {
+    void componentInvokeGivesEveryReturnValueBackToLua() {
         _machine.result = new Object[] { 42.0, Boolean.TRUE };
 
         runSource("local a, b = component.invoke('" + ADDRESS + "', 'ping')\n"
@@ -440,7 +440,7 @@ public class LuaJVmTest {
      * true rather than hoped for.
      */
     @Test
-    public void aComponentErrorReachesTheScriptAsAnOrdinaryLuaError() {
+    void aComponentErrorReachesTheScriptAsAnOrdinaryLuaError() {
         _machine.failure = new ComponentException(
                 "bad argument #1 to 'set' (string expected, got number)");
 
@@ -464,7 +464,7 @@ public class LuaJVmTest {
      * budget test above relies on.
      */
     @Test
-    public void aBugInTheHostIsNotReportedAsTheScriptsFault() {
+    void aBugInTheHostIsNotReportedAsTheScriptsFault() {
         IllegalStateException boom = new IllegalStateException("boom");
         _machine.failure = boom;
         _vm.load(("pcall(component.invoke, '" + ADDRESS + "', 'ping')").getBytes(UTF_8), CHUNK_NAME);
@@ -483,7 +483,7 @@ public class LuaJVmTest {
      * thread, where the next test's hook would read it.
      */
     @Test
-    public void anInterruptDuringAComponentCallStopsTheRunWithoutFailing() {
+    void anInterruptDuringAComponentCallStopsTheRunWithoutFailing() {
         _machine.interruptOnInvoke = true;
         _vm.load(("pcall(component.invoke, '" + ADDRESS + "', 'ping')\nprint('still running')")
                 .getBytes(UTF_8), CHUNK_NAME);
@@ -503,7 +503,7 @@ public class LuaJVmTest {
      * nothing.
      */
     @Test
-    public void pullSignalWithNoArgumentWaitsWithoutATimeout() {
+    void pullSignalWithNoArgumentWaitsWithoutATimeout() {
         _machine.next = new Signal("key_down", new Object[0]);
 
         runSource("computer.pullSignal()");
@@ -513,7 +513,7 @@ public class LuaJVmTest {
 
     /** The other route to the same branch, and the one an OC script takes. */
     @Test
-    public void anInfiniteTimeoutWaitsWithoutATimeout() {
+    void anInfiniteTimeoutWaitsWithoutATimeout() {
         _machine.next = new Signal("key_down", new Object[0]);
 
         runSource("computer.pullSignal(1/0)");
@@ -523,7 +523,7 @@ public class LuaJVmTest {
 
     /** Lua speaks seconds, core speaks milliseconds. 0.25 is exact in both. */
     @Test
-    public void pullSignalConvertsSecondsToMilliseconds() {
+    void pullSignalConvertsSecondsToMilliseconds() {
         runSource("computer.pullSignal(0.25)");
 
         assertEquals(250L, _machine.lastTimeoutMillis);
@@ -535,7 +535,7 @@ public class LuaJVmTest {
      * way and this is what pins the shape.
      */
     @Test
-    public void aPulledSignalArrivesUnpacked() {
+    void aPulledSignalArrivesUnpacked() {
         _machine.next = new Signal("key_down",
                 new Object[] { ADDRESS.getBytes(UTF_8), 97.0, 30.0 });
 
@@ -546,7 +546,7 @@ public class LuaJVmTest {
     }
 
     @Test
-    public void aPullThatTimesOutReturnsNothing() {
+    void aPullThatTimesOutReturnsNothing() {
         runSource("assert(computer.pullSignal(0) == nil)");
     }
 
@@ -556,7 +556,7 @@ public class LuaJVmTest {
      * flag must not be left standing on the JUnit thread.
      */
     @Test
-    public void anInterruptDuringAPullStopsTheRunWithoutFailing() {
+    void anInterruptDuringAPullStopsTheRunWithoutFailing() {
         _machine.interruptOnPull = true;
         _vm.load("computer.pullSignal()\nprint('still running')".getBytes(UTF_8), CHUNK_NAME);
 
@@ -574,7 +574,7 @@ public class LuaJVmTest {
      * 2026-08-12 choice - made before a script could catch anything.
      */
     @Test
-    public void theMessageAScriptCatchesCarriesNoMarker() {
+    void theMessageAScriptCatchesCarriesNoMarker() {
         runSource("local ok, err = pcall(function() local f = nil; f() end)\nprint(err)");
 
         String shown = new String(_written.get(0), UTF_8);
@@ -588,7 +588,7 @@ public class LuaJVmTest {
      * user's file would never get a chunk back.
      */
     @Test
-    public void aScriptCanCompileSource() {
+    void aScriptCanCompileSource() {
         runSource("local f = load('return 1 + 1')\n"
                 + "assert(f, 'load returned nil')\n"
                 + "assert(f() == 2, 'the chunk did not run')");
@@ -599,7 +599,7 @@ public class LuaJVmTest {
      * tell a user's typo from a broken sandbox.
      */
     @Test
-    public void aScriptGetsASyntaxErrorFromLoad() {
+    void aScriptGetsASyntaxErrorFromLoad() {
         runSource("local f, err = load('local x =')\n"
                 + "assert(f == nil, 'load accepted a bad chunk')\n"
                 + "print(err)");
@@ -616,7 +616,7 @@ public class LuaJVmTest {
      * untouched either way.
      */
     @Test
-    public void aScriptCannotAskForBinaryChunks() {
+    void aScriptCannotAskForBinaryChunks() {
         runSource("local f, err = load('return 3', 'user', 'b')\n"
                 + "assert(f ~= nil, 'the mode was not overridden: ' .. tostring(err))\n"
                 + "assert(f() == 3, 'the chunk did not run')");
@@ -629,7 +629,7 @@ public class LuaJVmTest {
      * passes fewer than four arguments and reads a global - which is a shell.
      */
     @Test
-    public void aChunkLoadedWithoutAnEnvironmentSeesTheGlobals() {
+    void aChunkLoadedWithoutAnEnvironmentSeesTheGlobals() {
         assertDoesNotThrow(() -> runSource(
                 "local chunk = assert(load('return type(print)', 'inner'))\n"
                         + "assert(chunk() == 'function', 'the chunk saw no globals')"));

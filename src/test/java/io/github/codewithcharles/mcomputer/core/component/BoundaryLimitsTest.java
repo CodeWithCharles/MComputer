@@ -3,7 +3,7 @@ package io.github.codewithcharles.mcomputer.core.component;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
-public class BoundaryLimitsTest {
+final class BoundaryLimitsTest {
 
     @Test
     void    defaultsAreDepth8And4096Entries() {

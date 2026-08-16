@@ -58,7 +58,6 @@ public final class LuaJVm implements Vm {
     private final LuaValue baseLoad;
     private final InstructionBudget budget;
     private LuaValue loaded;
-    private String chunkName;
 
     /**
      * @param output            where the script's output goes
@@ -146,7 +145,6 @@ public final class LuaJVm implements Vm {
         } catch (LuaError e) {
             throw failure(withoutQuoting(e.getMessage(), chunkName), e);
         }
-        this.chunkName = chunkName;
     }
 
     @Override

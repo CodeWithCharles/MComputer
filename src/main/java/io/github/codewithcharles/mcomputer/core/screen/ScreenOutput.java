@@ -71,8 +71,9 @@ public final class ScreenOutput implements VmOutput {
      * and on no other. The cap has a second job: without it, a Lua thread
      * printing while we drain makes this a tick that never returns.
      *
-     * @return how many lines were written, so a caller can tell whether
-     *         anything changed without comparing buffers
+     * @return how many lines were written. Not a signal that the screen
+     *         changed: the graphics card writes to the buffer directly, so a
+     *         caller watching this number misses everything a shell draws.
      */
     public int drain() {
         int written = 0;

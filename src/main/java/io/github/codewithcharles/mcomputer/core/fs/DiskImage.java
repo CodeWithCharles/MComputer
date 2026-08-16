@@ -2,10 +2,8 @@ package io.github.codewithcharles.mcomputer.core.fs;
 
 import io.github.codewithcharles.mcomputer.core.component.ComponentException;
 
-import java.io.ByteArrayOutputStream;
-import java.nio.ByteBuffer;
-import java.nio.charset.StandardCharsets;
-import java.util.*;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.function.Supplier;
 
 /**
@@ -14,6 +12,10 @@ import java.util.function.Supplier;
  *
  * <p>Handles live in the component API above. This object is what follows a
  * disk from one computer to another; an open handle is not.
+ *
+ * <p>What it owns is the tree and the accounting. The lexical rules about a
+ * path are {@link Paths}', the bytes of a file are {@link FileNode}'s, and the
+ * byte layout of a snapshot is {@link DiskFormat}'s.
  *
  * <p><b>A path that would leave the root is refused, never clamped.</b>
  * Clamping lets two distinct paths name one file with nothing saying so.
@@ -27,37 +29,14 @@ import java.util.function.Supplier;
  */
 public final class DiskImage {
 
-    /**
-     * One structure rather than a map of files beside a set of directory
-     * paths, so an empty directory is representable and nothing can disagree
-     * with anything.
-     */
-    private sealed interface Node permits FileNode, DirectoryNode {
-    }
-
-    /**
-     * A buffer and the length in use, so an append does not recopy the file at
-     * every write. What is charged is the length and never the buffer, or
-     * spaceUsed drifts from its own contract at the first growth.
-     */
-    private static final class FileNode implements Node {
-        private byte[] bytes = new byte[0];
-        private int length;
-    }
-
-    private record DirectoryNode(Map<String, Node> children) implements Node {
-    }
-
-    private static final byte DIRECTORY = 0;
-    private static final byte FILE = 1;
-
     private final long capacity;
     private final long entryCost;
 
     /**
-     * Entry costs plus content, over every entry but the root. Maintained at
-     * the mutation sites rather than walked: every write asks the question, and
-     * a walk answers it in O(n) each time.
+     * Entry costs plus content, over every entry but the root. Carried at the
+     * mutation sites rather than walked: every write would otherwise ask the
+     * question in O(n). {@link #recomputeUsed} is what keeps those sites
+     * honest.
      */
     private long used;
 
@@ -127,7 +106,7 @@ public final class DiskImage {
      * @throws ComponentException when the path names no file
      */
     public long size(String path) {
-        return fileAt(path).length;
+        return fileAt(path).length();
     }
 
     /**
@@ -143,17 +122,13 @@ public final class DiskImage {
         FileNode file = fileAt(path);
         requireNotNegative(offset, "offset");
         requireNotNegative(count, "count");
-        int from = Math.min(offset, file.length);
-        // Not from + count: a count near Integer.MAX_VALUE overflows that sum
-        // into a negative bound.
-        int taken = Math.min(count, file.length - from);
-        return Arrays.copyOfRange(file.bytes, from, from + taken);
+        return file.read(offset, count);
     }
 
     /**
      * Writes at {@code offset}, growing the file when the write runs past the
      * end and filling any gap with zero bytes, which are charged like any
-     * other. All or nothing: nothing is written when the result would not fit.
+     * other. All or nothing: the room is found before the file is touched.
      *
      * @throws ComponentException when the path names no file, when the offset
      *                            is negative, or when the disk has no room left
@@ -161,36 +136,22 @@ public final class DiskImage {
     public void write(String path, int offset, byte[] data) {
         FileNode file = fileAt(path);
         requireNotNegative(offset, "offset");
-        // In long: offset comes from a script, and offset + data.length
-        // overflows an int into a negative end that passes every check below.
-        long end = (long) offset + data.length;
-        long growth = Math.max(0L, end - file.length);
+        long growth = file.growthFor(offset, data.length);
         if (used + growth > capacity) {
             throw new ComponentException("not enough space");
         }
-        int grown = (int) Math.max(file.length, end);
-        if (grown > file.bytes.length) {
-            // Doubling, so an append is amortised.
-            file.bytes = Arrays.copyOf(file.bytes, Math.max(grown, file.bytes.length * 2));
-        }
-        System.arraycopy(data, 0, file.bytes, offset, data.length);
+        file.write(offset, data);
         used += growth;
-        file.length = grown;
         revision++;
     }
 
     /**
-     * Empties a file and refunds its content. The buffer goes with it, so
-     * nothing survives above the new length to be read back by a later write
-     * past the end.
+     * Empties a file and refunds its content.
      *
      * @throws ComponentException when the path names no file
      */
     public void truncate(String path) {
-        FileNode file = fileAt(path);
-        used -= file.length;
-        file.bytes = new byte[0];
-        file.length = 0;
+        used -= fileAt(path).truncate();
         revision++;
     }
 
@@ -227,7 +188,7 @@ public final class DiskImage {
         slot.parent().children().remove(slot.name());
         used -= entryCost;
         if (node instanceof FileNode file) {
-            used -= file.length;
+            used -= file.length();
         }
         revision++;
         return true;
@@ -242,7 +203,7 @@ public final class DiskImage {
      *         target sits under the source
      */
     public boolean rename(String from, String to) {
-        if (leadsInto(from, to)) {
+        if (Paths.leadsInto(from, to)) {
             return false;
         }
         Slot source = slotOf(from);
@@ -260,56 +221,47 @@ public final class DiskImage {
         return true;
     }
 
-    /**
-     * The whole disk as bytes, so the adapter has one array to carry.
-     *
-     * <p>Depth first, a parent always before its children, one record each:
-     * a kind byte, the path length and the path in UTF-8, and for a file its
-     * content length and its content. Every number is a big-endian int.
-     */
+    /** The whole disk as bytes, so the adapter has one array to carry. */
     public byte[] snapshot() {
-        ByteArrayOutputStream out = new ByteArrayOutputStream();
-        writeInto(out, root, "");
-        return out.toByteArray();
+        return DiskFormat.write(root);
     }
 
     /**
      * Replaces everything with what {@link #snapshot} produced.
      *
-     * <p>The capacity is not enforced here: a disk saved when it was larger
-     * keeps its files rather than losing them at a world load.
+     * <p>All or nothing: the tree is rebuilt beside the live one and swapped in
+     * at the end, so a snapshot that does not read leaves the disk as it was.
+     * Same rule as a write that does not fit.
+     *
+     * <p>The capacity is not enforced: a disk saved when it was larger keeps its
+     * files rather than losing them at a world load.
      *
      * @throws ComponentException when the bytes are not a snapshot
      */
     public void restore(byte[] snapshot) {
-        root.children().clear();
-        used = 0;
-        ByteBuffer buffer = ByteBuffer.wrap(snapshot);
-        while (buffer.hasRemaining()) {
-            byte kind = buffer.get();
-            // Before the path length is read, or a stray byte is taken for a
-            // length and asks for an array of two billion.
-            if (kind != DIRECTORY && kind != FILE) {
-                throw new ComponentException("not a snapshot: unknown kind " + kind);
-            }
-            String path = new String(take(buffer, takeInt(buffer)), StandardCharsets.UTF_8);
-            Slot slot = slotOf(path);
+        DirectoryNode staged = new DirectoryNode(new LinkedHashMap<>());
+        long stagedUsed = 0;
+        for (DiskFormat.Entry entry : DiskFormat.read(snapshot)) {
+            Slot slot = slotOf(staged, entry.path());
             if (slot == null) {
-                throw new ComponentException("not a snapshot: '" + path + "' has no place");
+                throw new ComponentException(
+                        "not a snapshot: '" + entry.path() + "' has no place");
             }
             Node node;
-            if (kind == DIRECTORY) {
+            if (entry.directory()) {
                 node = new DirectoryNode(new LinkedHashMap<>());
             } else {
                 FileNode file = new FileNode();
-                file.bytes = take(buffer, takeInt(buffer));
-                file.length = file.bytes.length;
-                used += file.length;
+                file.write(0, entry.content());
+                stagedUsed += entry.content().length;
                 node = file;
             }
             slot.parent().children().put(slot.name(), node);
-            used += entryCost;
+            stagedUsed += entryCost;
         }
+        root.children().clear();
+        root.children().putAll(staged.children());
+        used = stagedUsed;
         revision++;
     }
 
@@ -322,33 +274,50 @@ public final class DiskImage {
         return revision;
     }
 
+    /**
+     * What {@link #spaceUsed} would be if it were counted instead of carried.
+     *
+     * <p>Exists for one test, and the two are independent on purpose: the
+     * counter is derived from the history of the mutations, this from the tree
+     * as it stands. A refund forgotten at one of the four sites makes them
+     * disagree, and nothing else in the class would notice.
+     */
+    long recomputeUsed() {
+        return usedUnder(root);
+    }
+
+    private long usedUnder(DirectoryNode directory) {
+        long total = 0;
+        for (Node node : directory.children().values()) {
+            total += entryCost;
+            if (node instanceof FileNode file) {
+                total += file.length();
+            } else {
+                total += usedUnder((DirectoryNode) node);
+            }
+        }
+        return total;
+    }
+
     /** Where an entry sits, and under what name. */
     private record Slot(DirectoryNode parent, String name) {
     }
 
-    /** {@code null} for the root, and when the parent is missing or is a file. */
     private Slot slotOf(String path) {
-        List<String> segments = segmentsOf(path);
+        return slotOf(root, path);
+    }
+
+    /** {@code null} for the root, and when the parent is missing or is a file. */
+    private static Slot slotOf(DirectoryNode from, String path) {
+        List<String> segments = Paths.segmentsOf(path);
         if (segments.isEmpty()) {
             return null;
         }
         String name = segments.removeLast();
-        if (!(nodeAt(segments) instanceof DirectoryNode parent)) {
+        if (!(nodeAt(from, segments) instanceof DirectoryNode parent)) {
             return null;
         }
         return new Slot(parent, name);
-    }
-
-    /**
-     * Whether {@code to} sits under {@code from}. Renaming a directory into its
-     * own descendant detaches the branch below it and loses everything, in
-     * silence.
-     */
-    private static boolean leadsInto(String from, String to) {
-        List<String> ancestor = segmentsOf(from);
-        List<String> descendant = segmentsOf(to);
-        return descendant.size() > ancestor.size()
-                && descendant.subList(0, ancestor.size()).equals(ancestor);
     }
 
     /**
@@ -374,37 +343,6 @@ public final class DiskImage {
         if (value < 0) {
             throw new ComponentException(name + " must not be negative, got " + value);
         }
-    }
-
-    /**
-     * Splits a path into its segments, dropping what names nothing and
-     * resolving {@code ..} against what precedes it. The only place a path is
-     * read, so these rules are written once.
-     *
-     * <p>Purely lexical: {@code /a/..} is the root whether {@code /a} exists
-     * or not.
-     *
-     * @throws ComponentException when the path is not absolute, or when a
-     *                            {@code ..} would leave the root
-     */
-    static List<String> segmentsOf(String path) {
-        if (path.isEmpty() || path.charAt(0) != '/') {
-            throw new ComponentException("path is not absolute: '" + path + "'");
-        }
-        List<String> segments = new ArrayList<>();
-        for (String segment : path.split("/")) {
-            if (segment.isEmpty() || segment.equals(".")) {
-                continue;
-            } else if (segment.equals("..")) {
-                if (segments.isEmpty()) {
-                    throw new ComponentException("path leaves the root: '" + path + "'");
-                }
-                segments.removeLast();
-            } else {
-                segments.add(segment);
-            }
-        }
-        return segments;
     }
 
     /**
@@ -435,11 +373,11 @@ public final class DiskImage {
 
     /** {@code null} when nothing sits there, which is an answer and not a fault. */
     private Node nodeAt(String path) {
-        return nodeAt(segmentsOf(path));
+        return nodeAt(root, Paths.segmentsOf(path));
     }
 
-    private Node nodeAt(List<String> segments) {
-        Node node = root;
+    private static Node nodeAt(DirectoryNode from, List<String> segments) {
+        Node node = from;
         for (String segment : segments) {
             if (!(node instanceof DirectoryNode directory)) {
                 return null;
@@ -450,51 +388,5 @@ public final class DiskImage {
             }
         }
         return node;
-    }
-
-    /** Depth first, a parent written before the children it contains. */
-    private void writeInto(ByteArrayOutputStream out, DirectoryNode directory, String prefix) {
-        for (Map.Entry<String, Node> entry : directory.children().entrySet()) {
-            String path = prefix + "/" + entry.getKey();
-            byte[] encoded = path.getBytes(StandardCharsets.UTF_8);
-            Node node = entry.getValue();
-            out.write(node instanceof DirectoryNode ? DIRECTORY : FILE);
-            writeInt(out, encoded.length);
-            out.writeBytes(encoded);
-            if (node instanceof FileNode file) {
-                writeInt(out, file.length);
-                out.write(file.bytes, 0, file.length);
-            } else {
-                writeInto(out, (DirectoryNode) node, path);
-            }
-        }
-    }
-
-    private static void writeInt(ByteArrayOutputStream out, int value) {
-        out.write(value >>> 24);
-        out.write(value >>> 16);
-        out.write(value >>> 8);
-        out.write(value);
-    }
-
-    /**
-     * Both readers check what is left first, so a truncated or hostile snapshot
-     * is a refusal rather than an allocation of whatever the bytes happened to
-     * say.
-     */
-    private static int takeInt(ByteBuffer buffer) {
-        if (buffer.remaining() < Integer.BYTES) {
-            throw new ComponentException("not a snapshot: it ends mid-record");
-        }
-        return buffer.getInt();
-    }
-
-    private static byte[] take(ByteBuffer buffer, int count) {
-        if (count < 0 || count > buffer.remaining()) {
-            throw new ComponentException("not a snapshot: it ends mid-record");
-        }
-        byte[] taken = new byte[count];
-        buffer.get(taken);
-        return taken;
     }
 }

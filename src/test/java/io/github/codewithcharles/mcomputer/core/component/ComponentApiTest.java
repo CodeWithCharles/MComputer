@@ -7,7 +7,7 @@ import java.util.Set;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.junit.jupiter.api.Assertions.*;
 
-public class ComponentApiTest {
+final class ComponentApiTest {
 
     private static final ComponentMethod NOTHING = args -> new Object[0];
 

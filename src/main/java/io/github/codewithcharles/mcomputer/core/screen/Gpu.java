@@ -4,8 +4,12 @@ import io.github.codewithcharles.mcomputer.core.component.Arguments;
 import io.github.codewithcharles.mcomputer.core.component.ComponentApi;
 
 /**
- * The graphics card, as a script sees it: {@code set} and {@code getResolution}
- * over one {@link ScreenBuffer}.
+ * The graphics card, as a script sees it: {@code set}, {@code write},
+ * {@code getResolution} and {@code getCursor} over one {@link ScreenBuffer}.
+ *
+ * <p>Every method here is synchronous, where {@code print} reaches the buffer a
+ * tick later through the output queue. A shell that printed and then asked
+ * where its cursor was would read a position from before the drain.
  *
  * <p>It lives in {@code core} because its domain does. A component's API
  * belongs to the layer of the thing it drives, and this one drives the screen.

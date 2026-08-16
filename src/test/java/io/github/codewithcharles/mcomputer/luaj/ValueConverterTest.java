@@ -18,7 +18,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Stream;
 
-public class ValueConverterTest {
+final class ValueConverterTest {
 
     private final ValueConverter _converter = new ValueConverter(
             BoundaryLimits.defaults());

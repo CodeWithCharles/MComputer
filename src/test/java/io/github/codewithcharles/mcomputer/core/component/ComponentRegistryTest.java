@@ -7,7 +7,7 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-public class ComponentRegistryTest {
+final class ComponentRegistryTest {
 
     private static Component component(UUID address, String type) {
         return new Component(address, ComponentApi.builder(type).build());

@@ -11,7 +11,7 @@ import java.util.Map;
  * Java code is broken. It stays loud instead of reaching the player as a
  * puzzling Lua error we never see.
  */
-public class ComponentException extends RuntimeException {
+public final class ComponentException extends RuntimeException {
 
     public ComponentException(String message) {
         super(message);

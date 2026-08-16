@@ -26,15 +26,11 @@ import java.util.Arrays;
  * {@code Machine.start()}. The adapter parks lines in a thread-safe queue and
  * drains them here on the tick.
  *
- * <p>Invariant: every row at or below the write position is blank. It holds by
- * construction, by {@link #clear()} and by scrolling, and it is what lets
- * {@link #writeLine} leave the tail of a short line alone.
- *
  * <p>Two writers, and they do not share a rule. {@link #writeLine} lays lines
  * out and blanks what a short line does not cover, so a row it writes shows
  * that line and nothing else. {@link #set} addresses cells and leaves the rest
- * alone. There is no invariant about rows below the write position any more:
- * set may write anywhere, which is what retired it.
+ * alone. Nothing holds about the rows below the write position: set writes
+ * wherever it is told.
  */
 public final class ScreenBuffer {
 
@@ -103,7 +99,7 @@ public final class ScreenBuffer {
     public void set(int column, int row, byte[] bytes) {
         requireInsideGrid(column, row);
         int fits = Math.min(bytes.length, width - column);
-        System.arraycopy(bytes, 0, cells,row * width + column, fits);
+        System.arraycopy(bytes, 0, cells, row * width + column, fits);
         revision++;
     }
 

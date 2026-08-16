@@ -15,7 +15,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.junit.jupiter.api.Assertions.*;
 
-class RunAccessTest {
+final class RunAccessTest {
 
     private static final UUID GPU = UUID.fromString("11111111-2222-3333-4444-555555555555");
 

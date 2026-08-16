@@ -8,7 +8,7 @@ import java.util.UUID;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.junit.jupiter.api.Assertions.*;
 
-public class ComponentBusTest {
+final class ComponentBusTest {
 
     private static final UUID GPU = UUID.fromString("11111111-2222-3333-4444-555555555555");
     private static final String ABSENT = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";

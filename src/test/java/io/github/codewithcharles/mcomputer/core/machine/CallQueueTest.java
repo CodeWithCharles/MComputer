@@ -8,7 +8,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-class CallQueueTest {
+final class CallQueueTest {
 
     /**
      * A Lua thread, seen from the test: it submits, then blocks. What it got

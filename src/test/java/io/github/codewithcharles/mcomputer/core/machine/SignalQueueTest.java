@@ -6,7 +6,7 @@ import java.time.Duration;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-class SignalQueueTest {
+final class SignalQueueTest {
 
     private static Signal signal(String name) {
         return new Signal(name, new Object[0]);

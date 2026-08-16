@@ -7,7 +7,7 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-class ComponentTest {
+final class ComponentTest {
 
     private static final UUID ADDRESS = UUID.fromString("00000000-0000-0000-0000-00000000c0de");
 

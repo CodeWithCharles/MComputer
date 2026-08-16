@@ -659,4 +659,44 @@ final class DiskImageTest {
 
         assertEquals(before, _disk.revision());
     }
+
+    private void assertTheAccountingHolds() {
+        assertEquals(_disk.recomputeUsed(), _disk.spaceUsed(),
+                "the carried figure and the tree disagree");
+    }
+
+    /**
+     * The two figures are derived independently: spaceUsed is carried from the
+     * history of the mutations, recomputeUsed is counted off the tree as it
+     * stands. Nothing else in the class would notice them parting.
+     *
+     * One assertion per mutation site, on the precedent of
+     * everyMutationMovesTheRevision: a single check at the end would let two
+     * errors cancel, and would not say which site was wrong.
+     *
+     * Born green. Its red is earned by deleting the "used -= file.length()" of
+     * remove for ten seconds, which fails the fourth assertion alone.
+     */
+    @Test
+    void everyMutationLeavesTheAccountingTrue() {
+        _disk.makeDirectory("/a");
+        assertTheAccountingHolds();
+
+        _disk.createFile("/a/x.lua");
+        assertTheAccountingHolds();
+
+        _disk.write("/a/x.lua", 0, bytes("0123456789"));
+        assertTheAccountingHolds();
+
+        _disk.remove("/a/x.lua");
+        assertTheAccountingHolds();
+
+        _disk.createFile("/a/y.lua");
+        _disk.write("/a/y.lua", 0, bytes("abc"));
+        _disk.truncate("/a/y.lua");
+        assertTheAccountingHolds();
+
+        _disk.restore(_disk.snapshot());
+        assertTheAccountingHolds();
+    }
 }

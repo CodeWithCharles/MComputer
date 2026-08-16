@@ -18,7 +18,7 @@ import java.util.function.Supplier;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-class MachineTest {
+final class MachineTest {
 
     private static final int MAX_TASKS = 8;
     private static final int SIGNAL_CAPACITY = 8;

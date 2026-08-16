@@ -12,7 +12,7 @@ package io.github.codewithcharles.mcomputer.core.vm;
  * as a LuaJ type, which would break the dependency rule through an exception
  * instead of through an import. The cause is kept, so the Lua stack survives.
  */
-public class VmException extends RuntimeException {
+public final class VmException extends RuntimeException {
 
     public VmException(String message) {
         super(message);

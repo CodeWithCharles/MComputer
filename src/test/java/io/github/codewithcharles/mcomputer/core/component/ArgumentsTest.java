@@ -5,7 +5,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 
-public class ArgumentsTest {
+final class ArgumentsTest {
 
     private static Arguments of(Object... values) {
         return new Arguments(values, "set");

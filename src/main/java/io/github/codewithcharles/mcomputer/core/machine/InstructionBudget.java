@@ -1,7 +1,9 @@
 package io.github.codewithcharles.mcomputer.core.machine;
 
 /**
- * How many Lua instructions one run may execute per tick.
+ * How many Lua instructions a computer may execute per tick. Hardware, so it
+ * belongs to the machine and survives a reboot, where the queues belong to the
+ * run.
  *
  * <p>A rate rather than a total: a run that is a shell never ends, so a
  * lifetime allowance is a countdown to a death no player can explain. Spending

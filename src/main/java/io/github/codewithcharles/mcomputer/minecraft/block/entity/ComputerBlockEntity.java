@@ -35,7 +35,7 @@ import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 
-public class ComputerBlockEntity extends BlockEntity {
+public final class ComputerBlockEntity extends BlockEntity {
 
     /** TODO: a guess. tickRunsAtMostMaxTasksPerTick proves it reaches drain(). */
     private static final int MAX_TASKS_PER_TICK = 16;
@@ -94,6 +94,19 @@ public class ComputerBlockEntity extends BlockEntity {
      * UUID gives an identity to a disk that moves, and nothing moves yet.
      */
     private final DiskImage disk = new DiskImage(DISK_CAPACITY, DISK_ENTRY_COST);
+
+    /**
+     * True while {@link #getUpdateTag} builds a packet.
+     *
+     * <p>saveAdditional has two callers behind one signature, the disk and the
+     * network, and the disk must not cross the wire. Removing the key from the
+     * finished tag was not enough: saveCustomOnly runs saveAdditional, so the
+     * whole disk was snapshotted on every screen change - with a shell, on every
+     * keystroke - and then dropped.
+     *
+     * <p>Server thread only, like everything else here.
+     */
+    private boolean packingForNetwork;
 
     /**
      * What the chunk was last told about. setChanged() marks the chunk dirty,
@@ -225,7 +238,9 @@ public class ComputerBlockEntity extends BlockEntity {
     protected void saveAdditional(ValueOutput output) {
         super.saveAdditional(output);
         output.putBoolean("running", machine.isRunning());
-        output.store("disk", Codec.BYTE_BUFFER, ByteBuffer.wrap(disk.snapshot()));
+        if (!packingForNetwork) {
+            output.store("disk", Codec.BYTE_BUFFER, ByteBuffer.wrap(disk.snapshot()));
+        }
     }
 
     @Override
@@ -274,16 +289,18 @@ public class ComputerBlockEntity extends BlockEntity {
 
     @Override
     public CompoundTag getUpdateTag(HolderLookup.Provider registries) {
-        CompoundTag tag = saveCustomOnly(registries);
+        packingForNetwork = true;
+        CompoundTag tag;
+        try {
+            tag = saveCustomOnly(registries);
+        } finally {
+            packingForNetwork = false;
+        }
         // On the CompoundTag rather than through saveAdditional, which is the
         // whole trick: the disk path never sees these two keys, so "the buffer
         // does not survive a world reload" costs no code.
         tag.putByteArray("screen", screen.snapshot());
         tag.putInt("screen_row", screen.writePosition());
-        // The mirror of the two lines above: the screen is synchronised and not
-        // saved, the disk is saved and not synchronised. saveCustomOnly ran
-        // saveAdditional, so it is here that the disk leaves the packet.
-        tag.remove("disk");
         return tag;
     }
 

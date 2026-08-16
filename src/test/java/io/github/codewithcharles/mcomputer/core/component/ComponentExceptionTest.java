@@ -6,7 +6,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import java.util.List;
 import java.util.Map;
 
-public class ComponentExceptionTest {
+final class ComponentExceptionTest {
 
     private static String messageOf(int index, String expected, Object actual) {
         return ComponentException.badArgument(index, expected, actual).getMessage();
